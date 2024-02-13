@@ -44,4 +44,4 @@ Ensure that the required modules are installed before running the script. The sc
 ### Version 1.0.0
 - Initial version of the script.
 
-Feel free to reach out to the authors or the [Crayon DK FinOps Tema](finops.dk@crayon.com) team for any assistance or feedback related to this script.
+Feel free to reach out to the authors or the [Crayon DK FinOps Team](finops.dk@crayon.com) team for any assistance or feedback related to this script.
