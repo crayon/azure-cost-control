@@ -22,7 +22,7 @@ function Install-Module-If-Needed {
     }
     else {
         Write-Host "Module '$($ModuleName)' does not exist, installing..." -ForegroundColor Yellow
-        Install-Module $ModuleName -Force -AllowClobber -ErrorAction Stop
+        Install-Module $ModuleName -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
         Write-Host "Module '$($ModuleName)' installed." -ForegroundColor Green
     }
 }
