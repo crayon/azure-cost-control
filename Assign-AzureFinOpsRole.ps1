@@ -15,16 +15,16 @@ $ErrorActionPreference = "stop"
 
 ## Install msonline If Needed
 function Install-Module-If-Needed {
-    param([string]$ModuleName)
+	param([string]$ModuleName)
   
-    if (Get-Module -ListAvailable -Name $ModuleName) {
-        Write-Host "Module '$($ModuleName)' already exists, continue..." -ForegroundColor Green
-    }
-    else {
-        Write-Host "Module '$($ModuleName)' does not exist, installing..." -ForegroundColor Yellow
-        Install-Module $ModuleName -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
-        Write-Host "Module '$($ModuleName)' installed." -ForegroundColor Green
-    }
+	if (Get-Module -ListAvailable -Name $ModuleName) {
+		Write-Host "Module '$($ModuleName)' already exists, continue..." -ForegroundColor Green
+	}
+	else {
+		Write-Host "Module '$($ModuleName)' does not exist, installing..." -ForegroundColor Yellow
+		Install-Module $ModuleName -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+		Write-Host "Module '$($ModuleName)' installed." -ForegroundColor Green
+	}
 }
 
 #CHECK PS MODULE PREREQUISITES
@@ -62,13 +62,13 @@ $choice = Read-Host "Enter the number corresponding to the Agreement Type (1, 2,
 
 # Validate User Input
 switch ($choice) {
-    1 { $agreementType = "EA" }
-    2 { $agreementType = "MCA" }
-    3 { $agreementType = "CSP" }
-    default {
-        Write-Host "Invalid choice. Please enter a valid number (1, 2, or 3)." -ForegroundColor Red
-        exit
-    }
+	1 { $agreementType = "EA" }
+	2 { $agreementType = "MCA" }
+	3 { $agreementType = "CSP" }
+	default {
+		Write-Host "Invalid choice. Please enter a valid number (1, 2, or 3)." -ForegroundColor Red
+		exit
+	}
 }
 
 # Print the Selected Agreement Type
@@ -76,18 +76,18 @@ Write-Host "You selected the Agreement Type: $agreementType" -ForegroundColor Gr
 
 # Validate User Input
 switch ($choice) {
-    1 {
-        $agreementType = "EA"
-        $enrolmentId = Read-Host "Enter Azure Enrollment Id for EA:"
-    }
-    2 {
-        $agreementType = "MCA"
-        $enrolmentId = Read-Host "Enter Azure Billing Id for MCA:"
-    }
-    3 {
-        $agreementType = "CSP"
-        $enrolmentId = $null # No input required for CSP
-    }
+	1 {
+		$agreementType = "EA"
+		$enrolmentId = Read-Host "Enter Azure Enrollment Id for EA:"
+	}
+	2 {
+		$agreementType = "MCA"
+		$enrolmentId = Read-Host "Enter Azure Billing Id for MCA:"
+	}
+	3 {
+		$agreementType = "CSP"
+		$enrolmentId = $null # No input required for CSP
+	}
 }
 
 ####################################
@@ -110,95 +110,96 @@ $tenant = Get-AzTenant
 
 if ($tenant) {
 
-    ####################################
-    ##  Create folder on local machine
-    ####################################
-    New-Item -Path "C:\" -Name "Crayon" -ItemType "directory"
+	####################################
+	##  Create folder on local machine
+	####################################
+	New-Item -Path "C:\" -Name "Crayon" -ItemType "directory"
 
-    ####################################
-    # Root Tenant
-    ####################################
-    $RootTenantID = $azContext.tenant.ID
+	####################################
+	# Root Tenant
+	####################################
+	$RootTenantID = $azContext.tenant.ID
 
-    #############################################
-    # Azure Active Directory Application Varibles
-    ############################################
-    $appDisplayName = "CrayonCloudEconomics - ACC"
-    $ReplyUrl = "https://localhost" 
-    $EndDate = (Get-Date).AddYears(1000)
+	#############################################
+	# Azure Active Directory Application Varibles
+	############################################
+	$appDisplayName = "CrayonCloudEconomics - ACC"
+	$ReplyUrl = "https://localhost" 
+	$EndDate = (Get-Date).AddYears(1000)
 
-    ########################################
-    # Create  a new AD Application and  SPN
-    ########################################
-    $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
-    Write-Host "Successful SPN Creation"  -ForegroundColor Green
-    if ($sp) {
-        Update-AzADApplication -ApplicationId $sp.AppId -ReplyUrls $ReplyUrl
-        $appId = $sp.AppId
-        $EnterpriseObjectId = $sp.Id
-        $tenantInfo += [pscustomobject]@{ 
-            TenantId          = $tenant.Id
-            TenantName        = $tenant.Name
-            TenantDomain      = $tenant.Domains | Out-String  -Width 150
-            CountryCode       = $tenant.CountryCode
-            AppId             = $sp.AppId
-            SecretCredential  = $sp.PasswordCredentials.secretText
-            SecretEndDateTime = $sp.PasswordCredentials.endDateTime
-        }
+	########################################
+	# Create  a new AD Application and  SPN
+	########################################
+	$sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
+	Write-Host "Successful SPN Creation"  -ForegroundColor Green
+	if ($sp) {
+		Update-AzADApplication -ApplicationId $sp.AppId -ReplyUrls $ReplyUrl
+		$appId = $sp.AppId
+		$EnterpriseObjectId = $sp.Id
+		$tenantInfo += [pscustomobject]@{ 
+			TenantId          = $tenant.Id
+			TenantName        = $tenant.Name
+			TenantDomain      = $tenant.Domains | Out-String  -Width 150
+			CountryCode       = $tenant.CountryCode
+			AppId             = $sp.AppId
+			SecretCredential  = $sp.PasswordCredentials.secretText
+			SecretEndDateTime = $sp.PasswordCredentials.endDateTime
+		}
         
-        ####################################
-        # Assign Reader Role
-        ####################################
-        Try {
-            New-AzRoleAssignment -ServicePrincipalName $appId -RoleDefinitionName "Reader" -Scope $tenantRootMG.Id
-            Write-Host "Successful Reader Role Assignment"  -ForegroundColor Green
-        }
-        Catch {
-            Write-Host "Failed Reader Role Assignment" -ForegroundColor Red
-        }
+		####################################
+		# Assign Reader Role
+		####################################
+		Try {
+			New-AzRoleAssignment -ServicePrincipalName $appId -RoleDefinitionName "Reader" -Scope $tenantRootMG.Id
+			Write-Host "Successful Reader Role Assignment"  -ForegroundColor Green
+		}
+		Catch {
+			Write-Host "Failed Reader Role Assignment" -ForegroundColor Red
+		}
         
-        ####################################
-        # Assign Cost Management Reader
-        ####################################
-        Try {
-            New-AzRoleAssignment -ServicePrincipalName $appId -RoleDefinitionName "Cost Management Reader" -Scope $tenantRootMG.Id
-            Write-Host "Successful Cost Management Reader Role Assignment"  -ForegroundColor Green
-        }
-        Catch {
-             Write-Host " Failed Cost Management Reader Role Assignment" -ForegroundColor Red
-        }
+		####################################
+		# Assign Cost Management Reader
+		####################################
+		Try {
+			New-AzRoleAssignment -ServicePrincipalName $appId -RoleDefinitionName "Cost Management Reader" -Scope $tenantRootMG.Id
+			Write-Host "Successful Cost Management Reader Role Assignment"  -ForegroundColor Green
+		}
+		Catch {
+			Write-Host " Failed Cost Management Reader Role Assignment" -ForegroundColor Red
+		}
 
-        ####################################
-        # Assign Reservation Reader
-        ####################################
-        New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
+		####################################
+		# Assign Reservation Reader
+		####################################
+		New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
 
 
-        ####################################
-        # Assign Reader to SavingsPlans
-        ####################################
-        # Get SavingsPlans
-        $savingsPlansObjects = Get-AzBillingBenefitsSavingsPlanOrder
+		####################################
+		# Assign Reader to SavingsPlans
+		####################################
+		# Get SavingsPlans
+		$savingsPlansObjects = Get-AzBillingBenefitsSavingsPlanOrder
         
-        if ($savingsPlansObjects) {
-            foreach ($savingPlan in $savingsPlansObjects) {
-                $savingsPlanOrderId = $savingPlan.Id
+		if ($savingsPlansObjects) {
+			foreach ($savingPlan in $savingsPlansObjects) {
+				$savingsPlanOrderId = $savingPlan.Id
 
-                # Check if the SavingsPlans already has been assigned the "Reader" role
-                $scope = Get-AzRoleAssignment -Scope $savingsPlanOrderId -ObjectId $EnterpriseObjectId -RoleDefinitionName $SavingsPlanRoleAssignment
-                $RoleAssignmentId = $scope.RoleDefinitionName
+				# Check if the SavingsPlans already has been assigned the "Reader" role
+				$scope = Get-AzRoleAssignment -Scope $savingsPlanOrderId -ObjectId $EnterpriseObjectId -RoleDefinitionName $SavingsPlanRoleAssignment
+				$RoleAssignmentId = $scope.RoleDefinitionName
 
-                if ($RoleAssignmentId -contains 'Reader') {
-                    Write-Host "SavingsPlans Order already assigned Role" $RoleAssignmentId.Split("/")[-1]"" -ForegroundColor green 
-                }
-                else {
-                    Write-Host "Assigning "$SavingsPlanRoleAssignment" to "$savingsPlanOrderId 
-                    New-AzRoleAssignment -Scope $savingsPlanOrderId -ApplicationId $appId -RoleDefinitionName $SavingsPlanRoleAssignment 
-                }
-            }
-        }else{
-            Write-Host "No SavingsPlans Found in this tenant. Or the user does not have access to" -ForegroundColor Red
-        }
+				if ($RoleAssignmentId -contains 'Reader') {
+					Write-Host "SavingsPlans Order already assigned Role" $RoleAssignmentId.Split("/")[-1]"" -ForegroundColor green 
+				}
+				else {
+					Write-Host "Assigning "$SavingsPlanRoleAssignment" to "$savingsPlanOrderId 
+					New-AzRoleAssignment -Scope $savingsPlanOrderId -ApplicationId $appId -RoleDefinitionName $SavingsPlanRoleAssignment 
+				}
+			}
+		}
+		else {
+			Write-Host "No SavingsPlans Found in this tenant. Or the user does not have access to" -ForegroundColor Red
+		}
 		
 		if ($agreementType -ne "CSP") {
 			####################################
@@ -206,25 +207,25 @@ if ($tenant) {
 			####################################
 			$token = (Get-AzAccessToken).token
 			$url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleAssignments/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e?api-version=2019-10-01-preview"
-			$headers = @{'Authorization' = "Bearer $token"}
+			$headers = @{'Authorization' = "Bearer $token" }
 			$contentType = "application/json"
 			$data = @{        
 				properties = @{
-				principalid = "$EnterpriseObjectId";
-				principalTenantId = "$tenant.Id";
-				RoleDefinitionID = "/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleDefinitions/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e"
+					principalid       = "$EnterpriseObjectId";
+					principalTenantId = "$tenant.Id";
+					RoleDefinitionID  = "/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleDefinitions/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e"
 				}
 			}
 			$json = $data | ConvertTo-Json
 			Invoke-WebRequest -Method PUT -Uri $url -ContentType $contentType -Headers $headers -Body $json
 		}
-    }
+	}
     
-    # Converts the list to a csv, path defined at the top of this script
-    $dateKey = Get-Date -Format "yyyyMMdd"
-    $filepath = "C:\Crayon\CrayonCloudEconomics-"+$tenant.Name+"-"+$dateKey+".csv"
-    $tenantInfo | Export-Csv -Path $filepath
-    Write-Host "Securely send the file from the C:\Crayon directory to Crayon, then remove the folder."  -ForegroundColor Green
+	# Converts the list to a csv, path defined at the top of this script
+	$dateKey = Get-Date -Format "yyyyMMdd"
+	$filepath = "C:\Crayon\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
+	$tenantInfo | Export-Csv -Path $filepath
+	Write-Host "Securely send the file from the C:\Crayon directory to Crayon, then remove the folder."  -ForegroundColor Green
 	
 	# Assuming $tenantInfo is an array of objects
 	foreach ($tenantObject in $tenantInfo) {
@@ -232,7 +233,7 @@ if ($tenant) {
 		$currentAppId = $tenantObject.AppId
 		$currentSecretCredential = $tenantObject.SecretCredential
 		$secret = $tenantObject.SecretCredential | ConvertTo-SecureString -AsPlainText -Force
-		$psCredential = New-Object System.Management.Automation.PsCredential($appid,$secret)
+		$psCredential = New-Object System.Management.Automation.PsCredential($appid, $secret)
 		Connect-AzAccount -ServicePrincipal -Credential $psCredential -TenantId $currentTenantId -Warningaction SilentlyContinue
 		
 		# CHECK SUBSCRIPTION READER ACCESS
@@ -285,15 +286,20 @@ if ($tenant) {
 			$mgmt = "Permissions set on Management Group level: OK. There are $subcount subscriptions visible."
 		} 
 		else {
-			$missingRoles = @('Reader', 'Cost Management Reader') | Where-Object {
-				$roleName = $_
-				-not $managementGroupRoles.RoleDefinitionName.Contains($roleName)
+			if ($null -ne $managementGroupRoles) {
+				$missingRoles = @('Reader', 'Cost Management Reader') | Where-Object {
+					$roleName = $_
+					-not $managementGroupRoles.RoleDefinitionName.Contains($roleName)
+				}
+		
+				$missingRolesString = $missingRoles -join ', '
+		
+				Write-Host "FAILED: Permissions look to be set on subscription level. The following RoleDefinitionName(s) are missing at the management group level: '$missingRolesString'. Check if this is correct." -ForegroundColor Red
+				$mgmt = "Management Group level reader access: FAILED. There are $subcount subscriptions visible. Check that IAM role is set to '$missingRolesString' on Management Group Root for CrayonCloudEconomics app."
 			}
-
-			$missingRolesString = $missingRoles -join ', '
-
-			Write-Host "FAILED: Permissions look to be set on subscription level. The following RoleDefinitionName(s) are missing at the management group level: '$missingRolesString'. Check if this is correct." -ForegroundColor Red
-			$mgmt = "Management Group level reader access: FAILED. There are $subcount subscriptions visible. Check that IAM role is set to '$missingRolesString' on Management Group Root for CrayonCloudEconomics app." 
+			else {
+				Write-Host "ERROR: Management group roles object is null. Check that IAM roles is set to 'Reader' and 'Cost Managment reader' on Management Group Root for CrayonCloudEconomics app." -ForegroundColor Red
+			}
 		}
 		
 		# CHECK RESERVATIONS
@@ -358,7 +364,7 @@ if ($tenant) {
 			$accessToken = ($oauth.Content | ConvertFrom-Json).access_token
 
 			# GET RESULTS
-			$results = Invoke-WebRequest -Uri "https://management.azure.com/providers/Microsoft.Billing/billingAccounts?api-version=2019-10-01-preview" -Method GET -Headers @{Authorization="Bearer $accessToken"} -ContentType $contentType
+			$results = Invoke-WebRequest -Uri "https://management.azure.com/providers/Microsoft.Billing/billingAccounts?api-version=2019-10-01-preview" -Method GET -Headers @{Authorization = "Bearer $accessToken" } -ContentType $contentType
 			$content = ConvertFrom-Json $results.Content
 			$agreement = $content.value.properties.agreementType
 
@@ -427,7 +433,7 @@ if ($tenant) {
 
 }
 else {
-    Write-Host "No tenant can be read" -ForegroundColor Red
+	Write-Host "No tenant can be read" -ForegroundColor Red
 }
 
 # DISCONNECT
