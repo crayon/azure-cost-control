@@ -201,7 +201,7 @@ if ($tenant) {
 			Write-Host "No SavingsPlans Found in this tenant. Or the user does not have access to" -ForegroundColor Red
 		}
 		
-		if ($agreementType -ne "CSP") {
+		if ($agreementType -eq "EA") {
 			####################################
 			# Assign Enrollement Reader to SPN
 			####################################
@@ -218,6 +218,21 @@ if ($tenant) {
 			}
 			$json = $data | ConvertTo-Json
 			Invoke-WebRequest -Method PUT -Uri $url -ContentType $contentType -Headers $headers -Body $json
+		}
+		if ($agreementType -eq "MCA") {
+			$token = (Get-AzAccessToken).token
+			$url = "		https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/createBillingRoleAssignment?api-version=2019-10-01-preview"
+			$headers = @{'Authorization' = "Bearer $token" }
+			$contentType = "application/json"
+			$data = @{        
+				properties = @{
+					principalid       = "$EnterpriseObjectId";
+					#principalTenantId = "$tenant.Id";
+					RoleDefinitionID  = "/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleDefinitions/50000000-aaaa-bbbb-cccc-100000000002"
+				}
+			}
+			$json = $data | ConvertTo-Json
+			Invoke-WebRequest -Method POST -Uri $url -ContentType $contentType -Headers $headers -Body $json
 		}
 	}
     
