@@ -33,8 +33,7 @@ Write-Host "Checking PowerShell module prerequisites..."
 Install-Module-If-Needed Az.Accounts
 Install-Module-If-Needed Az.Resources
 
-
-# Import the modules in to the session
+# Import the modules into the session
 Import-Module -Name Az.Accounts
 Import-Module -Name Az.Resources
 
@@ -46,8 +45,8 @@ $roleDefinitionName = "Carbon Optimization Reader"
 ####################################
 ##  Login to Azure
 ####################################
-Login-AzAccount  -WarningAction silentlyContinue
-Write-Host "Authentication Success"  -ForegroundColor Green
+Login-AzAccount -WarningAction SilentlyContinue
+Write-Host "Authentication Success" -ForegroundColor Green
 
 # Ask for User Input for the Application (App) Registration's Enterprise Object ID
 $enterpriseObjectId = Read-Host "Please enter the Object ID of your Enterprise Application: "
@@ -67,21 +66,24 @@ else {
 
 if ($subcount -ge 1) {
     foreach ($subscription in $subscriptions) {
-        # Set the context to the current subscription in the loop
-        $subscriptionId = $subscription.Id
-        Select-AzSubscription -SubscriptionId $subscriptionId | Out-Null
-    
-        # Check if the role already has been assigned
-        $scope = Get-AzRoleAssignment -Scope "/subscriptions/$subscriptionId" -ObjectId $EnterpriseObjectId -RoleDefinitionName $roleDefinitionName
-        $RoleAssignmentId = $scope.RoleDefinitionName
+        # Check if the subscription is not disabled
+        if ($subscription.State -ne "Disabled") {
+            # Set the context to the current subscription in the loop
+            $subscriptionId = $subscription.Id
+            Select-AzSubscription -SubscriptionId $subscriptionId | Out-Null
 
-        if ($RoleAssignmentId -contains $roleDefinitionName) {
-            Write-Host "Subscription '$subscriptionId' already assigned Role" $RoleAssignmentId.Split("/")[-1]"" -ForegroundColor Green 
-        }
-        else {
-            Write-Host "Assigning "$roleDefinitionName" to "$subscriptionId -ForegroundColor DarkGray 
-            New-AzRoleAssignment -Scope "/subscriptions/$subscriptionId" -ObjectId $enterpriseObjectId -RoleDefinitionName $roleDefinitionName 
-            Write-Host "Assigned the '$roleDefinitionName' role to the Enterprise Application (Object ID: $enterpriseObjectId) for subscription $subscriptionId." -ForegroundColor Green 
+            # Check if the role already has been assigned
+            $scope = Get-AzRoleAssignment -Scope "/subscriptions/$subscriptionId" -ObjectId $enterpriseObjectId -RoleDefinitionName $roleDefinitionName
+            $RoleAssignmentId = $scope.RoleDefinitionName
+
+            if ($RoleAssignmentId -contains $roleDefinitionName) {
+                Write-Host "Subscription '$subscriptionId' already assigned Role" $RoleAssignmentId.Split("/")[-1]"" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Assigning '$roleDefinitionName' to '$subscriptionId'" -ForegroundColor DarkGray
+                New-AzRoleAssignment -Scope "/subscriptions/$subscriptionId" -ObjectId $enterpriseObjectId -RoleDefinitionName $roleDefinitionName
+                Write-Host "Assigned the '$roleDefinitionName' role to the Enterprise Application (Object ID: $enterpriseObjectId) for subscription $subscriptionId." -ForegroundColor Green
+            }
         }
     }
 }
