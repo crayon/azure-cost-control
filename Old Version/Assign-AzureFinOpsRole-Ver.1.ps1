@@ -9,23 +9,20 @@
 .RELEASENOTES
 Change Log:
 1.0.0 - Initial Version
-1.0.1 - Self check and powershell change made. Also $roleDefinitionName = "Carbon Optimization Reader" has been added.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
 
-#//------------------------------------------------------------------------------------
-#//  Install Az and AzureAD Module If Needed
-#//------------------------------------------------------------------------------------
+## Install msonline If Needed
 function Install-Module-If-Needed {
     param([string]$ModuleName)
-    
+
     if (Get-Module -ListAvailable -Name $ModuleName) {
         Write-Host "Module '$($ModuleName)' already exists, continue..." -ForegroundColor Green
     }
     else {
         Write-Host "Module '$($ModuleName)' does not exist, installing..." -ForegroundColor Yellow
-        Install-Module $ModuleName -Force -AllowClobber -ErrorAction Stop
+        Install-Module $ModuleName -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
         Write-Host "Module '$($ModuleName)' installed." -ForegroundColor Green
     }
 }
@@ -33,42 +30,33 @@ function Install-Module-If-Needed {
 #CHECK PS MODULE PREREQUISITES
 Write-Host "Checking PowerShell module prerequisites..."
 
-#//------------------------------------------------------------------------------------
-#//  Install Modules If Needed
-#//------------------------------------------------------------------------------------
+## Install Modules If Needed
 Install-Module-If-Needed Az.Accounts
 Install-Module-If-Needed Az.Reservations
 Install-Module-If-Needed Az.BillingBenefits
 Install-Module-If-Needed Az.Resources
 Install-Module-If-Needed Az.Billing
 
-#//------------------------------------------------------------------------------------
-#//  Import the modules into the session
-#//------------------------------------------------------------------------------------
+# Import the modules into the session
 Import-Module -Name Az.Accounts
 Import-Module -Name Az.Reservations
 Import-Module -Name Az.BillingBenefits
 Import-Module -Name Az.Resources
 Import-Module -Name Az.Billing
 
-#//------------------------------------------------------------------------------------
-#//  Varibles
-#//------------------------------------------------------------------------------------
+####################################
+##  Variables
+####################################
 $ReservationRoleAssignment = "Reservations Reader"
 $SavingsPlanRoleAssignment = "Reader"
-$CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # "Carbon Optimization Reader"
 
-#//------------------------------------------------------------------------------------
-#//  List Agreement Types
-#//------------------------------------------------------------------------------------
+# List Agreement Types
 Write-Host "Choose an Agreement Type:"
 Write-Host "1) Enterprise Agreement (EA)"
 Write-Host "2) Microsoft Customer Agreement (MCA)"
 Write-Host "3) Cloud Solution Provider (CSP)"
 
-#//------------------------------------------------------------------------------------
-#//  Ask for User Input
-#//------------------------------------------------------------------------------------
+# Ask for User Input
 $choice = Read-Host "Enter the number corresponding to the Agreement Type (1, 2, or 3)"
 
 # Validate User Input
@@ -101,9 +89,9 @@ switch ($choice) {
     }
 }
 
-#//------------------------------------------------------------------------------------
-#//  Login to Azure
-#//------------------------------------------------------------------------------------
+####################################
+##  Login to Azure
+####################################
 Login-AzAccount -WarningAction SilentlyContinue
 
 Write-Host "Authentication Success" -ForegroundColor Green
@@ -111,9 +99,9 @@ Write-Host "Authentication Success" -ForegroundColor Green
 # Prepare empty list for information about tenants and secrets
 $tenantInfo = @()
 
-#//------------------------------------------------------------------------------------
-#//  Tenant
-#//------------------------------------------------------------------------------------
+####################################
+##  Tenant
+####################################
 $azContext = Get-AzContext
 
 # Ensure Microsoft.Management provider is registered
@@ -128,33 +116,20 @@ $tenant = Get-AzTenant
 
 if ($tenant) {
 
-    #//------------------------------------------------------------------------------------
-    #//  Create folder on local machine
-    #//------------------------------------------------------------------------------------
-    $DirectoryPath = "C:\Crayon"
+    ####################################
+    ##  Create folder on local machine
+    ####################################
+    New-Item -Path "C:\" -Name "Crayon" -ItemType "directory"
 
-    if (-Not (Test-Path -Path $DirectoryPath)) {
-        New-Item -Path "C:\" -Name "Crayon" -ItemType "directory"
-        Write-Host "Directory created: $DirectoryPath" -ForegroundColor Green
-    }
-    else {
-        Write-Host "Directory already exists: $DirectoryPath" -ForegroundColor Green
-    }
-
-    #//------------------------------------------------------------------------------------
-    #//  Root Tenant
-    #//------------------------------------------------------------------------------------
-    $RootTenantID = $tenantRootMG.TenantId
-
-    #//------------------------------------------------------------------------------------
-    #//  Connect to AzureAD
-    #//------------------------------------------------------------------------------------
-    Connect-AzureAD -TenantId $RootTenantID
+    ####################################
+    # Root Tenant
+    ####################################
+    $RootTenantID = $azContext.tenant.ID
 
     #############################################
     # Azure Active Directory Application Variables
     ############################################
-    $appDisplayName = "CrayonCloudEconomics"
+    $appDisplayName = "CrayonCloudEconomics - ACC"
     $ReplyUrl = "https://localhost"
     $EndDate = (Get-Date).AddYears(1000)
 
@@ -166,12 +141,8 @@ if ($tenant) {
     Start-Sleep -Seconds 10
     if ($sp) {
         Update-AzADApplication -ApplicationId $sp.AppId -ReplyUrls $ReplyUrl
-        # Get the service principal of the enterprise application
-        $servicePrincipal = Get-AzureADServicePrincipal -Filter "DisplayName eq '$appDisplayName'"
-        # Get the ObjectID of the enterprise application
-        $EnterpriseObjectID = $servicePrincipal.ObjectId
-        # Get the ObjectID of the application
-        $appId = $servicePrincipal.AppId
+        $appId = $sp.AppId
+        $EnterpriseObjectId = $sp.Id
         $tenantInfo += [pscustomobject]@{
             TenantId          = $tenant.Id
             TenantName        = $tenant.Name
@@ -208,11 +179,6 @@ if ($tenant) {
         # Assign Reservation Reader
         ####################################
         New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
-
-        ####################################
-        # Assign Carbon Optimization Reader
-        ####################################
-        New-AzRoleAssignment -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID" -PrincipalId $EnterpriseObjectId -RoleDefinitionId $CarbonOptimizationRoleAssignment
 
         ####################################
         # Assign Reader to SavingsPlans
@@ -266,8 +232,9 @@ if ($tenant) {
             $contentType = "application/json"
             $data = @{        
                 properties = @{
-                    principalid      = "$EnterpriseObjectId";
-                    RoleDefinitionID = "/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleDefinitions/50000000-aaaa-bbbb-cccc-100000000002"
+                    principalid       = "$EnterpriseObjectId";
+                    #principalTenantId = "$tenant.Id";
+                    RoleDefinitionID  = "/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleDefinitions/50000000-aaaa-bbbb-cccc-100000000002"
                 }
             }
             $json = $data | ConvertTo-Json
@@ -280,23 +247,10 @@ if ($tenant) {
     $filepath = "C:\Crayon\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
     $tenantInfo | Export-Csv -Path $filepath
     Write-Host "Securely send the file from the C:\Crayon directory to Crayon, then remove the folder." -ForegroundColor Green
-
-    ####################################
-    # Choose subscription
-    ####################################
-
-    # Get all subscriptions
-    $subscriptions = Get-AzSubscription
-
-    # Select the first subscription
-    $firstSubscription = $subscriptions[0]
-
-    # Set the context to the first subscription
-    Set-AzContext -SubscriptionId $firstSubscription.Id
-
+    
     # Assuming $tenantInfo is an array of objects
     foreach ($tenantObject in $tenantInfo) {
-        $currentTenantId = $RootTenantID
+        $currentTenantId = $tenantObject.TenantId
         $currentAppId = $tenantObject.AppId
         $currentSecretCredential = $tenantObject.SecretCredential
         $secret = $tenantObject.SecretCredential | ConvertTo-SecureString -AsPlainText -Force

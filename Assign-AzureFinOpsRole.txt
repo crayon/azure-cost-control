@@ -9,7 +9,7 @@
 .RELEASENOTES
 Change Log:
 1.0.0 - Initial Version
-1.0.1 - Self check and powershell change made. Also $roleDefinitionName = "Carbon Optimization Reader" has been added.
+1.0.1 - Self check and powershell change made.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
@@ -56,7 +56,6 @@ Import-Module -Name Az.Billing
 #//------------------------------------------------------------------------------------
 $ReservationRoleAssignment = "Reservations Reader"
 $SavingsPlanRoleAssignment = "Reader"
-$CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # "Carbon Optimization Reader"
 
 #//------------------------------------------------------------------------------------
 #//  List Agreement Types
@@ -208,11 +207,6 @@ if ($tenant) {
         # Assign Reservation Reader
         ####################################
         New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
-
-        ####################################
-        # Assign Carbon Optimization Reader
-        ####################################
-        New-AzRoleAssignment -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID" -PrincipalId $EnterpriseObjectId -RoleDefinitionId $CarbonOptimizationRoleAssignment
 
         ####################################
         # Assign Reader to SavingsPlans
