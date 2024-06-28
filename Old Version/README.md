@@ -10,6 +10,7 @@
   - [Prerequisites](#prerequisites)
   - [Script Information](#script-information)
     - [Assign-AzureFinOpsRole](#assign-azurefinopsrole)
+    - [Assign-CarbonOptimizationReader](#assign-carbonoptimizationreader)
   - [Usage](#usage)
   - [Usage Instructions](#usage-instructions)
     - [Download the Script:](#download-the-script)
@@ -23,7 +24,7 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 ## Version Information
 
-- **Version**: 1.0.1
+- **Version**: 1.0.0
 - **Authors**: Claus Sonderstrup, Suman Bhushal, Antti Mustonen
 - **Company**: Crayon
 
@@ -45,10 +46,19 @@ The script will perform the following tasks:
    - Authenticate to Azure using `Login-AzAccount`.
    - Create a directory named "Crayon" on the local machine.
    - Create an Azure Active Directory Application and Service Principal (SPN).
-   - Assign Reader, Carbon Optimization Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
+   - Assign Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
    - Check and validate permissions for subscriptions, management groups, reservations, and billing accounts.
    - Save information about tenants and secrets to a CSV file in the "Crayon" directory.
 
+### Assign-CarbonOptimizationReader
+The script will perform the following tasks:
+   - Install necessary PowerShell modules if not already installed.
+   - Authenticate to Azure using `Login-AzAccount`.
+   - The user is prompted to provide the Object ID of the Enterprise Application.
+   - The script fetches all accessible subscriptions.
+   - For each subscription, it checks if the specified role is already assigned to the Enterprise Application.
+   - If not assigned, it assigns the "Carbon Optimization Reader" role to the Enterprise Application for each subscription.
+   
 ## Usage
 
 1. Run the script in a PowerShell environment.
