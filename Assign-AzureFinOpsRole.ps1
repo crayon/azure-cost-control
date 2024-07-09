@@ -41,6 +41,7 @@ Install-Module-If-Needed Az.Reservations
 Install-Module-If-Needed Az.BillingBenefits
 Install-Module-If-Needed Az.Resources
 Install-Module-If-Needed Az.Billing
+Install-Module-If-Needed AzureAD
 
 #//------------------------------------------------------------------------------------
 #//  Import the modules into the session
@@ -50,6 +51,7 @@ Import-Module -Name Az.Reservations
 Import-Module -Name Az.BillingBenefits
 Import-Module -Name Az.Resources
 Import-Module -Name Az.Billing
+Import-Module -Name AzureAD
 
 #//------------------------------------------------------------------------------------
 #//  Varibles
