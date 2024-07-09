@@ -10,7 +10,7 @@
 Change Log:
 1.0.0 - Initial Version
 1.0.1 - Self check and powershell change made. Also $roleDefinitionName = "Carbon Optimization Reader" has been added.
-1.0.2 - Module import check and Linux / Windows OS check added.
+1.0.2 - Check of Module import and Linux / Windows OS added.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
