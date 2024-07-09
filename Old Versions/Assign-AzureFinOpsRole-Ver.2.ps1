@@ -10,7 +10,6 @@
 Change Log:
 1.0.0 - Initial Version
 1.0.1 - Self check and powershell change made. Also $roleDefinitionName = "Carbon Optimization Reader" has been added.
-1.0.2 - Module import check and Linux / Windows OS check added.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
@@ -47,37 +46,12 @@ Install-Module-If-Needed AzureAD
 #//------------------------------------------------------------------------------------
 #//  Import the modules into the session
 #//------------------------------------------------------------------------------------
-
-# Modules to import
-$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD")
-function Import-Modules {
-    param (
-        [string[]]$moduleNames
-    )
-
-    foreach ($moduleName in $moduleNames) {
-        if (Get-Module -Name $moduleName -ListAvailable) {
-            if (Get-Module -Name $moduleName) {
-                Write-Output "Module '$moduleName' is already imported."
-            } else {
-                try {
-                    Import-Module -Name $moduleName -ErrorAction Stop
-                    Write-Output "Module '$moduleName' has been imported."
-                } catch {
-                    Write-Output "Failed to import module '$moduleName'. Error: $_"
-                }
-            }
-        } else {
-            Write-Output "Module '$moduleName' is not available."
-        }
-    }
-}
-
-# List of modules to check and import
-$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD")
-
-# Import the modules
-Import-Modules -moduleNames $modules
+Import-Module -Name Az.Accounts
+Import-Module -Name Az.Reservations
+Import-Module -Name Az.BillingBenefits
+Import-Module -Name Az.Resources
+Import-Module -Name Az.Billing
+Import-Module -Name AzureAD
 
 #//------------------------------------------------------------------------------------
 #//  Varibles
@@ -159,18 +133,10 @@ if ($tenant) {
     #//------------------------------------------------------------------------------------
     #//  Create folder on local machine
     #//------------------------------------------------------------------------------------
+    $DirectoryPath = "C:\Crayon"
 
-    # Determine the operating system
-    if ($IsWindows) {
-        $DirectoryPath = "C:\Crayon"
-    }
-    else {
-        $DirectoryPath = "/home/$(whoami)/Crayon"
-    }
-
-    # Check if the directory exists, if not, create it
     if (-Not (Test-Path -Path $DirectoryPath)) {
-        New-Item -Path $DirectoryPath -ItemType "directory"
+        New-Item -Path "C:\" -Name "Crayon" -ItemType "directory"
         Write-Host "Directory created: $DirectoryPath" -ForegroundColor Green
     }
     else {
@@ -178,25 +144,25 @@ if ($tenant) {
     }
 
     #//------------------------------------------------------------------------------------
-    #//                                 Root Tenant
+    #//  Root Tenant
     #//------------------------------------------------------------------------------------
     $RootTenantID = $tenantRootMG.TenantId
 
     #//------------------------------------------------------------------------------------
-    #//                              Connect to AzureAD
+    #//  Connect to AzureAD
     #//------------------------------------------------------------------------------------
     Connect-AzureAD -TenantId $RootTenantID
 
-    #//------------------------------------------------------------------------------------
-    #//                   Azure Active Directory Application Variables
-    #//------------------------------------------------------------------------------------
-    $appDisplayName = "CrayonCloudEconomicsReader"
+    #############################################
+    # Azure Active Directory Application Variables
+    ############################################
+    $appDisplayName = "CrayonCloudEconomics"
     $ReplyUrl = "https://localhost"
     $EndDate = (Get-Date).AddYears(1000)
 
-    #//------------------------------------------------------------------------------------
-    #//                       Create a new AD Application and SPN
-    #//------------------------------------------------------------------------------------
+    ########################################
+    # Create a new AD Application and SPN
+    ########################################
     $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
     Write-Host "Successful SPN Creation" -ForegroundColor Green
     Start-Sleep -Seconds 10
@@ -218,9 +184,9 @@ if ($tenant) {
             SecretEndDateTime = $sp.PasswordCredentials.endDateTime
         }
         
-        #//------------------------------------------------------------------------------------
-        #//                                 Assign Reader Role
-        #//------------------------------------------------------------------------------------
+        ####################################
+        # Assign Reader Role
+        ####################################
         Try {
             New-AzRoleAssignment -ServicePrincipalName $appId -RoleDefinitionName "Reader" -Scope $tenantRootMG.Id
             Write-Host "Successful Reader Role Assignment" -ForegroundColor Green
@@ -229,9 +195,9 @@ if ($tenant) {
             Write-Host "Failed Reader Role Assignment" -ForegroundColor Red
         }
         
-        #//------------------------------------------------------------------------------------
-        #//                           Assign Cost Management Reader
-        #//------------------------------------------------------------------------------------
+        ####################################
+        # Assign Cost Management Reader
+        ####################################
         Try {
             New-AzRoleAssignment -ServicePrincipalName $appId -RoleDefinitionName "Cost Management Reader" -Scope $tenantRootMG.Id
             Write-Host "Successful Cost Management Reader Role Assignment" -ForegroundColor Green
@@ -240,19 +206,19 @@ if ($tenant) {
             Write-Host "Failed Cost Management Reader Role Assignment" -ForegroundColor Red
         }
 
-        #//------------------------------------------------------------------------------------
-        #//                            Assign Reservation Reader
-        #//------------------------------------------------------------------------------------
+        ####################################
+        # Assign Reservation Reader
+        ####################################
         New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
 
-        #//------------------------------------------------------------------------------------
-        #//                         Assign Carbon Optimization Reader
-        #//------------------------------------------------------------------------------------
+        ####################################
+        # Assign Carbon Optimization Reader
+        ####################################
         New-AzRoleAssignment -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID" -PrincipalId $EnterpriseObjectId -RoleDefinitionId $CarbonOptimizationRoleAssignment
 
-        #//------------------------------------------------------------------------------------
-        #//                           Assign Reader to SavingsPlans
-        #//------------------------------------------------------------------------------------
+        ####################################
+        # Assign Reader to SavingsPlans
+        ####################################
         # Get SavingsPlans
         $savingsPlansObjects = Get-AzBillingBenefitsSavingsPlanOrder
         
@@ -278,9 +244,9 @@ if ($tenant) {
         }
         
         if ($agreementType -eq "EA") {
-            #//------------------------------------------------------------------------------------
-            #//                           Assign Enrollment Reader to SPN
-            #//------------------------------------------------------------------------------------
+            ####################################
+            # Assign Enrollment Reader to SPN
+            ####################################
             $token = (Get-AzAccessToken).token
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleAssignments/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
@@ -313,13 +279,13 @@ if ($tenant) {
     
     # Converts the list to a csv, path defined at the top of this script
     $dateKey = Get-Date -Format "yyyyMMdd"
-    $filepath = "$DirectoryPath\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
+    $filepath = "C:\Crayon\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
     $tenantInfo | Export-Csv -Path $filepath
-    Write-Host "Securely send the file from the $DirectoryPath directory to Crayon, then remove the folder." -ForegroundColor Green
+    Write-Host "Securely send the file from the C:\Crayon directory to Crayon, then remove the folder." -ForegroundColor Green
 
-    #//------------------------------------------------------------------------------------
-    #//                                 Choose subscription
-    #//------------------------------------------------------------------------------------
+    ####################################
+    # Choose subscription
+    ####################################
 
     # Get all subscriptions
     $subscriptions = Get-AzSubscription
@@ -339,9 +305,7 @@ if ($tenant) {
         $psCredential = New-Object System.Management.Automation.PsCredential($currentAppId, $secret)
         Connect-AzAccount -ServicePrincipal -Credential $psCredential -TenantId $currentTenantId -Warningaction SilentlyContinue
         
-        #//------------------------------------------------------------------------------------
-        #//                         CHECK SUBSCRIPTION READER ACCESS
-        #//------------------------------------------------------------------------------------
+        # CHECK SUBSCRIPTION READER ACCESS
         Write-Host "Checking subscriptions..."
 
         try {
@@ -368,9 +332,7 @@ if ($tenant) {
             $sub = "Subscription count: FAILED. No subscriptions visible. Check with the customer. Check that IAM role is set to Reader on the Management Group Root for CrayonCloudEconomics app."
         }
         
-        #//------------------------------------------------------------------------------------
-        #//                             CHECK READER ROLES FOR APP
-        #//------------------------------------------------------------------------------------
+        # CHECK READER ROLES FOR APP
         Write-Host "Checking Reader roles level..."
 
         try {
@@ -409,9 +371,7 @@ if ($tenant) {
             }
         }
         
-        #//------------------------------------------------------------------------------------
-        #//                                 CHECK RESERVATIONS
-        #//------------------------------------------------------------------------------------
+        # CHECK RESERVATIONS
         try {
             $reservationObjects = Get-AzReservation
         }
@@ -421,9 +381,7 @@ if ($tenant) {
 
         $reservationcount = $reservationObjects.Count
 
-        #//------------------------------------------------------------------------------------
-        #//                             CHECK RESERVATION NUMBERS
-        #//------------------------------------------------------------------------------------
+        # CHECK RESERVATION NUMBERS
         Write-Host "Checking how many reservations are readable..."
 
         if ($reservationcount -gt 0) {
@@ -434,9 +392,7 @@ if ($tenant) {
             Write-Host "There are $reservationcount reservations readable for Application ID: $currentAppId." -ForegroundColor Yellow
             $res = "Reservations visible: CHECK. $reservationcount reservations are visible. Looks like reservations have not been bought."
         }
-        #//------------------------------------------------------------------------------------
-        #//                                 CHECK SavingsPlan 
-        #//------------------------------------------------------------------------------------
+        # CHECK SavingsPlan 
         try {
             $savingsPlanObjects = Get-AzBillingBenefitsSavingsPlanOrder
         }
@@ -446,9 +402,7 @@ if ($tenant) {
 
         $savingsPlanCount = $savingsPlanObjects.Count
 
-        #//------------------------------------------------------------------------------------
-        #//                             CHECK SavingsPlan NUMBERS
-        #//------------------------------------------------------------------------------------
+        # CHECK SavingsPlan NUMBERS
         Write-Host "Checking how many SavingsPlan are readable..."
 
         if ($savingsPlanCount -gt 0) {
@@ -460,9 +414,7 @@ if ($tenant) {
             $sav = "Savingsplan visible: CHECK. $savingsPlanCount savingsplans are visible. Looks like savingsplans have not been bought."
         }
         
-        #//------------------------------------------------------------------------------------
-        #//                 GET - BILLING API TEST - READ BILLING ACCOUNTS
-        #//------------------------------------------------------------------------------------
+        # GET - BILLING API TEST - READ BILLING ACCOUNTS
         if ($agreementType -ne "CSP") {
             Write-Host "Checking Enrollment reader permissions..."
 
@@ -495,9 +447,7 @@ if ($tenant) {
             }
         }
         
-        #//------------------------------------------------------------------------------------
-        #//                                 SUMMARIZE RESULTS
-        #//------------------------------------------------------------------------------------
+        # SUMMARIZE RESULTS
         Write-Host "---SUMMARY---" -ForegroundColor Yellow
 
         if ($sub.Contains("OK")) {
@@ -555,8 +505,6 @@ else {
     Write-Host "No tenant can be read" -ForegroundColor Red
 }
 
-#//------------------------------------------------------------------------------------
-#//                                     DISCONNECT
-#//------------------------------------------------------------------------------------
+# DISCONNECT
 Write-Host "Disconnecting..."
 Disconnect-AzAccount > $null
