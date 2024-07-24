@@ -29,12 +29,13 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 ## Role Required
 - **Global Administrator** at the Tenant level.
+  - https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal
 - If an **Enterprise Agreement** with Microsoft, additionally, the **Enterprise Administrator** role is required to assign the "Enrollment Reader" role to the service principal name.
 
 
 ## Prerequisites
 
-- PowerShell modules: Az, Az.Accounts, Az.Reservations, Az.BillingBenefits, Az.Resources, Az.Billing
+- PowerShell modules: Az, Az.Accounts, Az.Reservations, Az.BillingBenefits, Az.Resources, Az.Billing, AzureAD, AzureAD.Standard.Preview
 
 Ensure that the required modules are installed before running the script. The script will attempt to install them if they are not already present.
 
@@ -43,7 +44,7 @@ Ensure that the required modules are installed before running the script. The sc
 The script will perform the following tasks:
    - Install necessary PowerShell modules if not already installed.
    - Authenticate to Azure using `Login-AzAccount`.
-   - Create a directory named "Crayon" on the local machine.
+   - Create a directory named "Crayon" on the local machine windows machine and on Linux /home/$(whoami)/Crayon. 
    - Create an Azure Active Directory Application and Service Principal (SPN).
    - Assign Reader, Carbon Optimization Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
    - Check and validate permissions for subscriptions, management groups, reservations, and billing accounts.
