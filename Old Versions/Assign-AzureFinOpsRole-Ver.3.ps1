@@ -11,7 +11,6 @@ Change Log:
 1.0.0 - Initial Version
 1.0.1 - Self check and powershell change made. Also $roleDefinitionName = "Carbon Optimization Reader" has been added.
 1.0.2 - Check of Module import and Linux / Windows OS added.
-1.0.3 - AzureAD change to AzureAD.Standard.Preview, "Tenant.id" change to "$RootTenantID", Linie 344 "Start-Sleep -Seconds 20" added and linie 401 "-Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID"" added.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
@@ -44,14 +43,13 @@ Install-Module-If-Needed Az.BillingBenefits
 Install-Module-If-Needed Az.Resources
 Install-Module-If-Needed Az.Billing
 Install-Module-If-Needed AzureAD
-Install-Module-If-Needed AzureAD.Standard.Preview
 
 #//------------------------------------------------------------------------------------
 #//  Import the modules into the session
 #//------------------------------------------------------------------------------------
 
 # Modules to import
-$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD.Standard.Preview")
+$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD")
 function Import-Modules {
     param (
         [string[]]$moduleNames
@@ -61,25 +59,22 @@ function Import-Modules {
         if (Get-Module -Name $moduleName -ListAvailable) {
             if (Get-Module -Name $moduleName) {
                 Write-Output "Module '$moduleName' is already imported."
-            }
-            else {
+            } else {
                 try {
                     Import-Module -Name $moduleName -ErrorAction Stop
                     Write-Output "Module '$moduleName' has been imported."
-                }
-                catch {
+                } catch {
                     Write-Output "Failed to import module '$moduleName'. Error: $_"
                 }
             }
-        }
-        else {
+        } else {
             Write-Output "Module '$moduleName' is not available."
         }
     }
 }
 
 # List of modules to check and import
-$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD.Standard.Preview")
+$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD")
 
 # Import the modules
 Import-Modules -moduleNames $modules
@@ -200,25 +195,6 @@ if ($tenant) {
     $EndDate = (Get-Date).AddYears(1000)
 
     #//------------------------------------------------------------------------------------
-    #//             Verify that the App Registration doesn't exit already
-    #//------------------------------------------------------------------------------------
-    # Define the app registration name to check
-    $appName = $appDisplayName
-
-    # Get the app registration
-    $app = Get-AzureADApplication -Filter "DisplayName eq '$appName'"
-
-    # Check if the app registration exists
-    if ($app) {
-        # Stop the script with a bold red text message
-        Write-Host -ForegroundColor Red -BackgroundColor Black "`nPlease remove all CrayonCloudEconomicsReader App Registration in Azure and run the script again`n"
-        exit
-    }
-    else {
-        Write-Host -ForegroundColor Yellow -BackgroundColor Black "`nNo existing app registration found with the name '$appName'.`n"
-    }
-
-    #//------------------------------------------------------------------------------------
     #//                       Create a new AD Application and SPN
     #//------------------------------------------------------------------------------------
     $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
@@ -233,7 +209,7 @@ if ($tenant) {
         # Get the ObjectID of the application
         $appId = $servicePrincipal.AppId
         $tenantInfo += [pscustomobject]@{
-            TenantId          = $RootTenantID
+            TenantId          = $tenant.Id
             TenantName        = $tenant.Name
             TenantDomain      = $tenant.Domains | Out-String -Width 150
             CountryCode       = $tenant.CountryCode
@@ -312,7 +288,7 @@ if ($tenant) {
             $data = @{        
                 properties = @{
                     principalid       = "$EnterpriseObjectId";
-                    principalTenantId = "$RootTenantID";
+                    principalTenantId = "$tenant.Id";
                     RoleDefinitionID  = "/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleDefinitions/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e"
                 }
             }
@@ -340,8 +316,6 @@ if ($tenant) {
     $filepath = "$DirectoryPath\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
     $tenantInfo | Export-Csv -Path $filepath
     Write-Host "Securely send the file from the $DirectoryPath directory to Crayon, then remove the folder." -ForegroundColor Green
-
-    Start-Sleep -Seconds 20
 
     #//------------------------------------------------------------------------------------
     #//                                 Choose subscription
@@ -400,7 +374,7 @@ if ($tenant) {
         Write-Host "Checking Reader roles level..."
 
         try {
-            $roles = Get-AzRoleAssignment -ServicePrincipalName $currentAppId -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID"
+            $roles = Get-AzRoleAssignment -ServicePrincipalName $currentAppId
         }
         catch {
             $mgmterror = $_.Exception.Message 
@@ -411,10 +385,10 @@ if ($tenant) {
         # Check if both RoleDefinitions are assigned at the management group level
         $managementGroupRoles = $roles | Where-Object {
             $_.Scope -like '/providers/Microsoft.Management/managementGroups*' -and
-            ($_.RoleDefinitionName -eq 'Reader' -or $_.RoleDefinitionName -eq 'Cost Management Reader' -or $_.RoleDefinitionName -eq "Carbon Optimization Reader")
+            ($_.RoleDefinitionName -eq 'Reader' -or $_.RoleDefinitionName -eq 'Cost Management Reader')
         }
 
-        if ($managementGroupRoles.Count -eq 3) {
+        if ($managementGroupRoles.Count -eq 2) {
             Write-Host "Permissions are set on management group level." -ForegroundColor Green
             $mgmt = "Permissions set on Management Group level: OK. There are $subcount subscriptions visible."
         } 
