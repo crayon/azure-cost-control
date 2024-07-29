@@ -15,7 +15,7 @@
     - [Download the Script:](#download-the-script)
   - [Notes](#notes)
   - [Release Notes](#release-notes)
-    - [Version 1.0.0](#version-100)
+    - [Version 1.0.3](#version-103)
 
 ## Overview
 
@@ -84,7 +84,7 @@ The script will perform the following tasks:
 
 ## Release Notes
 
-### Version 1.0.0
+### Version 1.0.3
 - Initial version of the script.
 
 Feel free to reach out to the authors or the [Crayon DK FinOps Team](finops.dk@crayon.com) team for any assistance or feedback related to this script.
