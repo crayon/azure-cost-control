@@ -23,7 +23,7 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 ## Version Information
 
-- **Version**: 1.0.1
+- **Version**: 1.0.3
 - **Authors**: Claus Sonderstrup, Suman Bhushal, Antti Mustonen
 - **Company**: Crayon
 
@@ -69,7 +69,7 @@ The script will perform the following tasks:
 ### Download the Script:
 
 1. Visit the [GitHub repository](https://github.com/CrayonCustomers/azure-cost-control/)
-2. Locate the "Assign-AzureFinOpsRole.ps1" file to assign Azure FinOps Role and "Assign-CarbonOptimizationReader.ps1" file to assign Carbon Optimization Reader.
+2. Locate the "Assign-AzureFinOpsRole.ps1" file to assign Azure FinOps Roles.
 3. Click on the file to view its contents.
 4. Right-click on the "Raw" button or the script contents and select "Save As" to download the script.
 5. Navigate to the folder where the script is downloaded, right-click on the file, and choose "Open with PowerShell."
