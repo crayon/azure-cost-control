@@ -28,8 +28,13 @@ This PowerShell script is designed to automate the setup and validation of permi
 - **Company**: Crayon
 
 ## Role Required
-- **Global Administrator** at the Tenant level.
-  - https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal
+- **Global Administrator with elevated access** in Microsoft Entra ID.
+
+    Elevating your access provides permissions to all subscriptions and management groups in your directory. This can be helpful in situations where Global Administrator rights alone do not grant the required access.
+
+    Here is the link to elevate your access: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal
+
+  - **Note:** Please note that elevated access should be removed immediately after running the necessary scripts.
 - If an **Enterprise Agreement** with Microsoft, additionally, the **Enterprise Administrator** role is required to assign the "Enrollment Reader" role to the service principal name.
 
 
@@ -80,11 +85,11 @@ The script will perform the following tasks:
 - The script checks and validates various permissions related to Azure subscriptions, management groups, reservations, SavingsPlans, and billing accounts.
 - It performs role assignments to ensure proper access for the created Azure Active Directory Application.
 - Results and summary information are displayed at the end of the script execution.
-- Securely send the generated CSV file to [Crayon](mailto:finops.dk@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
+- Securely send the generated CSV file to [Crayon](mailto:(CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
 
 ## Release Notes
 
 ### Version 1.0.3
 - Initial version of the script.
 
-Feel free to reach out to the authors or the [Crayon DK FinOps Team](finops.dk@crayon.com) team for any assistance or feedback related to this script.
+Feel free to reach out to the authors or the [Crayon FinOps Team](CloudCostControl@crayon.com) team for any assistance or feedback related to this script.
