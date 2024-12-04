@@ -85,11 +85,11 @@ The script will perform the following tasks:
 - The script checks and validates various permissions related to Azure subscriptions, management groups, reservations, SavingsPlans, and billing accounts.
 - It performs role assignments to ensure proper access for the created Azure Active Directory Application.
 - Results and summary information are displayed at the end of the script execution.
-- Securely send the generated CSV file to [Crayon](mailto:(CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
+- Securely send the generated CSV file to [Crayon](mailto:CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
 
 ## Release Notes
 
 ### Version 1.0.3
 - Initial version of the script.
 
-Feel free to reach out to the authors or the [Crayon FinOps Team](CloudCostControl@crayon.com) team for any assistance or feedback related to this script.
+Feel free to reach out to the authors or the [Crayon FinOps Team](mailto:CloudCostControl@crayon.com) team for any assistance or feedback related to this script.
