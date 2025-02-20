@@ -167,10 +167,9 @@ if ($tenant) {
 
     # Determine the operating system
     if ($IsWindows) {
-        $DirectoryPath = "C:\Crayon"
-    }
-    else {
-        $DirectoryPath = "/home/$(whoami)/Crayon"
+        $DirectoryPath = "C:\crayon"
+    }else {
+        $DirectoryPath = "$home/crayon"
     }
 
     # Check if the directory exists, if not, create it
