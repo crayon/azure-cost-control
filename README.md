@@ -32,7 +32,8 @@ This PowerShell script is designed to automate the setup and validation of permi
 
     Elevating your access provides permissions to all subscriptions and management groups in your directory. This can be helpful in situations where Global Administrator rights alone do not grant the required access.
 
-    Here is the link to elevate your access: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal
+    Here is the link to elevate your access: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal 
+    This involves settings the "Access management for Azure Resources" to enabled.
 
   - **Note:** Please note that elevated access should be removed immediately after running the necessary scripts.
 - If an **Enterprise Agreement** with Microsoft, additionally, the **Enterprise Administrator** role is required to assign the "Enrollment Reader" role to the service principal name.
@@ -59,10 +60,10 @@ The script will perform the following tasks:
 
 1. Run the script in a PowerShell environment.
 2. The script will prompt you to select an Agreement Type (EA, MCA, or CSP).
-3. Depending on the Agreement Type selected, additional information such as [Azure Enrollment Id](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/direct-ea-administration#view-enrollment-details) or [Billing Id](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/direct-ea-administration#to-select-a-billing-scope) may be required.
-4. The script will perform the following tasks:
+3. The script will perform the following tasks:
    - Install necessary PowerShell modules if not already installed.
    - Authenticate to Azure using `Login-AzAccount`.
+   - Fetch billing account id if agreement type is EA or MCA
    - Create a directory named "Crayon" on the local machine.
    - Create an Azure Active Directory Application and Service Principal (SPN).
    - Assign Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
