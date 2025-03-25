@@ -32,6 +32,57 @@ function Install-Module-If-Needed {
     }
 }
 
+function Fetch-EEAMCABillingAccounts{
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$bearerToken
+    )
+
+        <#
+    .SYNOPSIS
+    Fetches the Billing id for MCA or EA billing accounts
+
+    .DESCRIPTION
+    This function checks if the application has the necessary permissions to read billing accounts using the provided bearer token.
+
+    .PARAMETER bearerToken
+    The OAuth 2.0 bearer token used for authentication to azure.
+
+    .INPUTS
+    None. You can't pipe objects to Fetch-EEAMCABillingAccounts.
+
+    .OUTPUTS
+    Returns the billing account id
+
+    .EXAMPLE
+    PS> Fetch-EEAMCABillingAccounts -bearerToken "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6I..."
+    #>
+
+
+    $ApiUri = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts?api-version=2019-10-01-preview"
+    $Headers = @{
+        'Content-Type'  = "application/json"
+        'Authorization' = "Bearer $bearerToken"
+    }
+    try {
+        $billingAcccounts = Invoke-RestMethod -Uri $ApiUri -Headers $Headers -Method Get
+    }
+    catch {
+        Throw "Failed to authenticate to Azure services to fetch billingaccounts please confirm that customer has an EA/MCA agreement or has the permission to list billing accounts" + $_
+    }
+    
+
+    if($billingAcccounts.count.value -eq 0){
+        Throw "Failed to authenticate to Azure services to fetch billingaccounts please confirm that customer has an EA (enterprise agreement) or has provided the application permission Enrollment Reader"
+    }
+
+    $billingAccountID = $billingAcccounts.value[0] | select -ExpandProperty name
+
+    return $billingAccountID
+    
+}
+
+
 #CHECK PS MODULE PREREQUISITES
 Write-Host "Checking PowerShell module prerequisites..."
 
@@ -91,48 +142,6 @@ $ReservationRoleAssignment = "Reservations Reader"
 $SavingsPlanRoleAssignment = "Reader"
 $CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # "Carbon Optimization Reader"
 
-#//------------------------------------------------------------------------------------
-#//  List Agreement Types
-#//------------------------------------------------------------------------------------
-Write-Host "Choose an Agreement Type:"
-Write-Host "1) Enterprise Agreement (EA)"
-Write-Host "2) Microsoft Customer Agreement (MCA)"
-Write-Host "3) Cloud Solution Provider (CSP)"
-
-#//------------------------------------------------------------------------------------
-#//  Ask for User Input
-#//------------------------------------------------------------------------------------
-$choice = Read-Host "Enter the number corresponding to the Agreement Type (1, 2, or 3)"
-
-# Validate User Input
-switch ($choice) {
-    1 { $agreementType = "EA" }
-    2 { $agreementType = "MCA" }
-    3 { $agreementType = "CSP" }
-    default {
-        Write-Host "Invalid choice. Please enter a valid number (1, 2, or 3)." -ForegroundColor Red
-        exit
-    }
-}
-
-# Print the Selected Agreement Type
-Write-Host "You selected the Agreement Type: $agreementType" -ForegroundColor Green
-
-# Validate User Input
-switch ($choice) {
-    1 {
-        $agreementType = "EA"
-        $enrolmentId = Read-Host "Enter Azure Enrollment Id for EA:"
-    }
-    2 {
-        $agreementType = "MCA"
-        $enrolmentId = Read-Host "Enter Azure Billing Id for MCA:"
-    }
-    3 {
-        $agreementType = "CSP"
-        $enrolmentId = $null # No input required for CSP
-    }
-}
 
 #//------------------------------------------------------------------------------------
 #//  Login to Azure
@@ -190,6 +199,47 @@ if ($tenant) {
     #//                              Connect to AzureAD
     #//------------------------------------------------------------------------------------
     Connect-AzureAD -TenantId $RootTenantID
+
+    #//------------------------------------------------------------------------------------
+    #//  List Agreement Types
+    #//------------------------------------------------------------------------------------
+    Write-Host "Choose an Agreement Type:"
+    Write-Host "1) Enterprise Agreement (EA)"
+    Write-Host "2) Microsoft Customer Agreement (MCA)"
+    Write-Host "3) Cloud Solution Provider (CSP)"
+
+    #//------------------------------------------------------------------------------------
+    #//  Ask for User Input
+    #//------------------------------------------------------------------------------------
+    $choice = Read-Host "Enter the number corresponding to the Agreement Type (1, 2, or 3)"
+
+    # Validate User Input
+    switch ($choice) {
+        1 { $agreementType = "EA" }
+        2 { $agreementType = "MCA" }
+        3 { $agreementType = "CSP" }
+        default {
+            Write-Host "Invalid choice. Please enter a valid number (1, 2, or 3)." -ForegroundColor Red
+            exit
+        }
+    }
+
+    # Print the Selected Agreement Type
+    Write-Host "You selected the Agreement Type: $agreementType" -ForegroundColor Green
+    switch ($choice) {
+        1 {
+            $agreementType = "EA"
+            $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken ((Get-AzAccessToken).token) 
+        }
+        2 {
+            $agreementType = "MCA"
+            $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken ((Get-AzAccessToken).token)
+        }
+        3 {
+            $agreementType = "CSP"
+            $enrolmentId = $null # No input required for CSP
+        }
+    }
 
     #//------------------------------------------------------------------------------------
     #//                   Azure Active Directory Application Variables
