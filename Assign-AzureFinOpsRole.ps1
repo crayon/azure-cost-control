@@ -72,7 +72,7 @@ function Fetch-EEAMCABillingAccounts{
     }
     
 
-    if($billingAcccounts.count.value -eq 0){
+    if(-not $billingAcccounts.value){
         Throw "Failed to authenticate to Azure services to fetch billingaccounts please confirm that customer has an EA (enterprise agreement) or has provided the application permission Enrollment Reader"
     }
 
