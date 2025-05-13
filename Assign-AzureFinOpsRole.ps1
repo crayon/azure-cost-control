@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.3
+.VERSION 1.0.5
 
 .AUTHOR Claus Sonderstrup and Suman Bhushal, Crayon. http://www.crayon.com
 
@@ -12,12 +12,15 @@ Change Log:
 1.0.1 - Self check and powershell change made. Also $roleDefinitionName = "Carbon Optimization Reader" has been added.
 1.0.2 - Check of Module import and Linux / Windows OS added.
 1.0.3 - AzureAD change to AzureAD.Standard.Preview, "Tenant.id" change to "$RootTenantID", Linie 344 "Start-Sleep -Seconds 20" added and linie 401 "-Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID"" added.
+1.0.4 - Updated to use Microsoft Graph PowerShell SDK instead of deprecated AzureAD modules. Changed login method to use DeviceCode flow for better compatibility, and added error handling for module installation and import.
+1.0.5 - Updated Get-AzAccessToken calls to use -AsSecureString:$false to prepare for Az version 14.0.0 breaking changes
+1.0.6 - Fixed Service Principal propagation time issue that could happen at some environments by increasing wait time after creating the Service Principal.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
 
 #//------------------------------------------------------------------------------------
-#//  Install Az and AzureAD Module If Needed
+#//  Install Az and Microsoft Graph Module If Needed
 #//------------------------------------------------------------------------------------
 function Install-Module-If-Needed {
     param([string]$ModuleName)
@@ -94,15 +97,14 @@ Install-Module-If-Needed Az.Reservations
 Install-Module-If-Needed Az.BillingBenefits
 Install-Module-If-Needed Az.Resources
 Install-Module-If-Needed Az.Billing
-Install-Module-If-Needed AzureAD
-Install-Module-If-Needed AzureAD.Standard.Preview
+Install-Module-If-Needed Microsoft.Graph.Authentication
+Install-Module-If-Needed Microsoft.Graph.Applications
+Install-Module-If-Needed Microsoft.Graph.Identity.DirectoryManagement
 
 #//------------------------------------------------------------------------------------
 #//  Import the modules into the session
 #//------------------------------------------------------------------------------------
 
-# Modules to import
-$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD.Standard.Preview")
 function Import-Modules {
     param (
         [string[]]$moduleNames
@@ -115,7 +117,7 @@ function Import-Modules {
             }
             else {
                 try {
-                    Import-Module -Name $moduleName -ErrorAction Stop
+                    Import-Module -Name $moduleName -DisableNameChecking -ErrorAction Stop
                     Write-Output "Module '$moduleName' has been imported."
                 }
                 catch {
@@ -130,13 +132,13 @@ function Import-Modules {
 }
 
 # List of modules to check and import
-$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "AzureAD.Standard.Preview")
+$modules = @("Az.Accounts", "Az.Reservations", "Az.BillingBenefits", "Az.Resources", "Az.Billing", "Microsoft.Graph.Authentication", "Microsoft.Graph.Applications", "Microsoft.Graph.Identity.DirectoryManagement")
 
 # Import the modules
 Import-Modules -moduleNames $modules
 
 #//------------------------------------------------------------------------------------
-#//  Varibles
+#//  Variables
 #//------------------------------------------------------------------------------------
 $ReservationRoleAssignment = "Reservations Reader"
 $SavingsPlanRoleAssignment = "Reader"
@@ -146,7 +148,7 @@ $CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # "Ca
 #//------------------------------------------------------------------------------------
 #//  Login to Azure
 #//------------------------------------------------------------------------------------
-Login-AzAccount -WarningAction SilentlyContinue
+Login-AzAccount -WarningAction SilentlyContinue -DeviceCode
 
 Write-Host "Authentication Success" -ForegroundColor Green
 
@@ -196,9 +198,10 @@ if ($tenant) {
     $RootTenantID = $tenantRootMG.TenantId
 
     #//------------------------------------------------------------------------------------
-    #//                              Connect to AzureAD
+    #//                              Connect to Microsoft Graph
     #//------------------------------------------------------------------------------------
-    Connect-AzureAD -TenantId $RootTenantID
+    # Connect to Microsoft Graph with required permissions
+    Connect-MgGraph -TenantId $RootTenantID -Scopes "Application.ReadWrite.All", "Directory.Read.All" -UseDeviceCode
 
     #//------------------------------------------------------------------------------------
     #//  List Agreement Types
@@ -229,11 +232,13 @@ if ($tenant) {
     switch ($choice) {
         1 {
             $agreementType = "EA"
-            $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken ((Get-AzAccessToken).token) 
+            $accessToken = (Get-AzAccessToken -AsSecureString:$false).Token
+            $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         2 {
-            $agreementType = "MCA"
-            $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken ((Get-AzAccessToken).token)
+            $agreementType = "MCA" 
+            $accessToken = (Get-AzAccessToken -AsSecureString:$false).Token
+            $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         3 {
             $agreementType = "CSP"
@@ -246,7 +251,16 @@ if ($tenant) {
     #//------------------------------------------------------------------------------------
     $appDisplayName = "CrayonCloudEconomicsReader"
     $ReplyUrl = "https://localhost"
-    $EndDate = (Get-Date).AddYears(1000)
+
+    $EndDateMonths = Read-Host "Enter length of the Crayon agreement in months. Press Enter to use the default value (36 months from now)"
+    if (-not $EndDateMonths) {
+        $EndDate = (Get-Date).AddMonths(36)
+        Write-Host "Default end date set to: $EndDate" -ForegroundColor Green
+    }
+    else {
+        $EndDate = (Get-Date).AddMonths([int]$EndDateMonths)
+        Write-Host "End date set to: $EndDate" -ForegroundColor Green
+    }
 
     #//------------------------------------------------------------------------------------
     #//             Verify that the App Registration doesn't exit already
@@ -255,7 +269,7 @@ if ($tenant) {
     $appName = $appDisplayName
 
     # Get the app registration
-    $app = Get-AzureADApplication -Filter "DisplayName eq '$appName'"
+    $app = Get-MgApplication -Filter "DisplayName eq '$appName'"
 
     # Check if the app registration exists
     if ($app) {
@@ -270,27 +284,29 @@ if ($tenant) {
     #//------------------------------------------------------------------------------------
     #//                       Create a new AD Application and SPN
     #//------------------------------------------------------------------------------------
-    $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
-    Write-Host "Successful SPN Creation" -ForegroundColor Green
-    Start-Sleep -Seconds 10
-    if ($sp) {
-        Update-AzADApplication -ApplicationId $sp.AppId -ReplyUrls $ReplyUrl
-        # Get the service principal of the enterprise application
-        $servicePrincipal = Get-AzureADServicePrincipal -Filter "DisplayName eq '$appDisplayName'"
-        # Get the ObjectID of the enterprise application
-        $EnterpriseObjectID = $servicePrincipal.ObjectId
-        # Get the ObjectID of the application
-        $appId = $servicePrincipal.AppId
-        $tenantInfo += [pscustomobject]@{
-            TenantId          = $RootTenantID
-            TenantName        = $tenant.Name
-            TenantDomain      = $tenant.Domains | Out-String -Width 150
-            CountryCode       = $tenant.CountryCode
-            AppId             = $sp.AppId
-            SecretCredential  = $sp.PasswordCredentials.secretText
-            SecretEndDateTime = $sp.PasswordCredentials.endDateTime
-        }
-        
+        $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
+        Write-Host "Waiting for Service Principal to be created..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 25        
+        if ($sp) {
+            Write-Host "Service Principal succesfully created with AppId: $($sp.AppId)" -ForegroundColor Green
+            Update-AzADApplication -ApplicationId $sp.AppId -ReplyUrls $ReplyUrl
+            # Get the service principal of the enterprise application
+            $servicePrincipal = Get-MgServicePrincipal -Filter "DisplayName eq '$appDisplayName'"
+            # Get the ObjectID of the enterprise application
+            $EnterpriseObjectID = $servicePrincipal.Id
+            # Get the AppId
+            $appId = $servicePrincipal.AppId
+
+            $tenantInfo += [pscustomobject]@{
+                TenantId          = $RootTenantID
+                TenantName        = $tenant.Name
+                TenantDomain      = $tenant.Domains | Out-String -Width 150
+                CountryCode       = $tenant.CountryCode
+                AppId             = $sp.AppId
+                SecretCredential  = $sp.PasswordCredentials.secretText
+                SecretEndDateTime = $sp.PasswordCredentials.endDateTime
+    }
+
         #//------------------------------------------------------------------------------------
         #//                                 Assign Reader Role
         #//------------------------------------------------------------------------------------
@@ -300,7 +316,7 @@ if ($tenant) {
         }
         Catch {
             Write-Host "Failed Reader Role Assignment" -ForegroundColor Red
-        }
+        }     
         
         #//------------------------------------------------------------------------------------
         #//                           Assign Cost Management Reader
@@ -312,7 +328,7 @@ if ($tenant) {
         Catch {
             Write-Host "Failed Cost Management Reader Role Assignment" -ForegroundColor Red
         }
-
+        
         #//------------------------------------------------------------------------------------
         #//                            Assign Reservation Reader
         #//------------------------------------------------------------------------------------
@@ -354,7 +370,7 @@ if ($tenant) {
             #//------------------------------------------------------------------------------------
             #//                           Assign Enrollment Reader to SPN
             #//------------------------------------------------------------------------------------
-            $token = (Get-AzAccessToken).token
+            $token = (Get-AzAccessToken -AsSecureString:$false).Token
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleAssignments/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
@@ -369,7 +385,7 @@ if ($tenant) {
             Invoke-WebRequest -Method PUT -Uri $url -ContentType $contentType -Headers $headers -Body $json
         }
         if ($agreementType -eq "MCA") {
-            $token = (Get-AzAccessToken).token
+            $token = (Get-AzAccessToken -AsSecureString:$false).Token
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/createBillingRoleAssignment?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
@@ -626,7 +642,7 @@ if ($tenant) {
     }
 
 }
-else {
+    else {
     Write-Host "No tenant can be read" -ForegroundColor Red
 }
 
@@ -635,3 +651,4 @@ else {
 #//------------------------------------------------------------------------------------
 Write-Host "Disconnecting..."
 Disconnect-AzAccount > $null
+Disconnect-MgGraph > $null

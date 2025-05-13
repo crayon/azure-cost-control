@@ -15,17 +15,23 @@
     - [Download the Script:](#download-the-script)
   - [Notes](#notes)
   - [Release Notes](#release-notes)
-    - [Version 1.0.3](#version-103)
+    - [Version 1.0.6](#version-106)
+    - [Version 1.0.5](#version-105)
+    - [Version 1.0.4](#version-104)
+   
 
 ## Overview
 
 This PowerShell script is designed to automate the setup and validation of permissions for onbarding cusotmers in Crayon Azure Cost Control Service. It focuses on enabling various role assignments and permissions related to Azure management, billing, and subscriptions. The script is intended for use in environments with different agreement types, such as Enterprise Agreement (EA), Microsoft Customer Agreement (MCA), and Cloud Solution Provider (CSP).
 
-## Version Information
 
-- **Version**: 1.0.3
-- **Authors**: Claus Sonderstrup, Suman Bhushal, Antti Mustonen
+## Version Information
+- **Version**: 1.0.6 **Authors**: Karol Kępka
+- **Version**: 1.0.5 **Authors**: Karol Kępka
+- **Version**: 1.0.4 **Authors**: Karol Kępka
+- **Version**: 1.0.3 (initial) **Authors**: Claus Sonderstrup, Suman Bhushal, Antti Mustonen
 - **Company**: Crayon
+
 
 ## Role Required
 - **Global Administrator with elevated access** in Microsoft Entra ID.
@@ -41,7 +47,7 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 ## Prerequisites
 
-- PowerShell modules: Az, Az.Accounts, Az.Reservations, Az.BillingBenefits, Az.Resources, Az.Billing, AzureAD, AzureAD.Standard.Preview
+- PowerShell modules: Az, Az.Accounts, Az.Reservations, Az.BillingBenefits, Az.Resources, Az.Billing, Microsoft.Graph.Authentication, Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement
 
 Ensure that the required modules are installed before running the script. The script will attempt to install them if they are not already present.
 
@@ -50,7 +56,7 @@ Ensure that the required modules are installed before running the script. The sc
 The script will perform the following tasks:
    - Install necessary PowerShell modules if not already installed.
    - Authenticate to Azure using `Login-AzAccount`.
-   - Create a directory named "Crayon" on the local machine windows machine and on Linux /home/$(whoami)/Crayon. 
+   - Create a location named "c:\crayon" on the local machine windows machine and on Linux $home/crayon. 
    - Create an Azure Active Directory Application and Service Principal (SPN).
    - Assign Reader, Carbon Optimization Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
    - Check and validate permissions for subscriptions, management groups, reservations, and billing accounts.
@@ -90,7 +96,26 @@ The script will perform the following tasks:
 
 ## Release Notes
 
-### Version 1.0.3
+### Version 1.0.6
+#### Fixed propagation issue on some environments
+
+Fixed Service Principal propagation time issue by increasing wait time after creating the Service Principal.
+
+### Version 1.0.5
+#### Deprecated Azure module behaviour
+
+Updated Get-AzAccessToken calls to use -AsSecureString:$false to prepare for Az version 14.0.0 breaking changes
+
+### Version 1.0.4
+#### Deprecated Azure AD replacement
+
+1.0.4 update is replacing the deprecated AzureAD modules with Microsoft Graph PowerShell SDK, ensuring compatibility beyond the Microsoft Entra retirement dates in 2025.
+- **Modules Changed:**
+  - **Removed:** AzureAD, AzureAD.Standard.Preview
+  - **Added:** Microsoft.Graph.Authentication, Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement
+- **Updated all Azure AD operations** to use Microsoft Graph API
+- **Changed connection method from Connect-AzureAD** to Connect-MgGraph with appropriate scopes
 - Initial version of the script.
 
 Feel free to reach out to the authors or the [Crayon FinOps Team](mailto:CloudCostControl@crayon.com) team for any assistance or feedback related to this script.
+
