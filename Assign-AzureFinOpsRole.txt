@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.5
+.VERSION 1.0.6
 
 .AUTHOR Claus Sonderstrup and Suman Bhushal, Crayon. http://www.crayon.com
 
