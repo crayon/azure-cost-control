@@ -22,7 +22,7 @@
 
 ## Overview
 
-This PowerShell script is designed to automate the setup and validation of permissions for onbarding cusotmers in Crayon Azure Cost Control Service. It focuses on enabling various role assignments and permissions related to Azure management, billing, and subscriptions. The script is intended for use in environments with different agreement types, such as Enterprise Agreement (EA), Microsoft Customer Agreement (MCA), and Cloud Solution Provider (CSP).
+This PowerShell script is designed to automate the setup and validation of permissions for onbarding customers in Crayon Azure Cost Control Service. It focuses on enabling various role assignments and permissions related to Azure management, billing, and subscriptions. The script is intended for use in environments with different agreement types, such as Enterprise Agreement (EA), Microsoft Customer Agreement (MCA), and Cloud Solution Provider (CSP).
 
 
 ## Version Information
