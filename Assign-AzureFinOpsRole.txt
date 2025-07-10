@@ -1,8 +1,8 @@
 <#PSScriptInfo
 
-.VERSION 1.0.6
+.VERSION 1.0.7
 
-.AUTHOR Claus Sonderstrup and Suman Bhushal, Crayon. http://www.crayon.com
+.AUTHOR Claus Sonderstrup, Suman Bhushal, Karol Kępka Crayon. http://www.crayon.com
 
 .COMPANYNAME Crayon
 
@@ -15,6 +15,7 @@ Change Log:
 1.0.4 - Updated to use Microsoft Graph PowerShell SDK instead of deprecated AzureAD modules. Changed login method to use DeviceCode flow for better compatibility, and added error handling for module installation and import.
 1.0.5 - Updated Get-AzAccessToken calls to use -AsSecureString:$false to prepare for Az version 14.0.0 breaking changes
 1.0.6 - Fixed Service Principal propagation time issue that could happen at some environments by increasing wait time after creating the Service Principal.
+1.0.7 - Improved support for Microsoft Customer Agreement (MCA) billing accounts, allowing the script to fetch billing account IDs for both EA and MCA agreements.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
@@ -232,12 +233,12 @@ if ($tenant) {
     switch ($choice) {
         1 {
             $agreementType = "EA"
-            $accessToken = (Get-AzAccessToken -AsSecureString:$false).Token
+            $accessToken = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
             $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         2 {
             $agreementType = "MCA" 
-            $accessToken = (Get-AzAccessToken -AsSecureString:$false).Token
+            $accessToken = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
             $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         3 {
@@ -370,7 +371,7 @@ if ($tenant) {
             #//------------------------------------------------------------------------------------
             #//                           Assign Enrollment Reader to SPN
             #//------------------------------------------------------------------------------------
-            $token = (Get-AzAccessToken -AsSecureString:$false).Token
+            $token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleAssignments/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
@@ -385,7 +386,7 @@ if ($tenant) {
             Invoke-WebRequest -Method PUT -Uri $url -ContentType $contentType -Headers $headers -Body $json
         }
         if ($agreementType -eq "MCA") {
-            $token = (Get-AzAccessToken -AsSecureString:$false).Token
+            $token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/createBillingRoleAssignment?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
