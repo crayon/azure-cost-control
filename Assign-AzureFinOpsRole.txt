@@ -233,12 +233,12 @@ if ($tenant) {
     switch ($choice) {
         1 {
             $agreementType = "EA"
-            $accessToken = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
+            $accessToken = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         2 {
             $agreementType = "MCA" 
-            $accessToken = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
+            $accessToken = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         3 {
@@ -371,7 +371,7 @@ if ($tenant) {
             #//------------------------------------------------------------------------------------
             #//                           Assign Enrollment Reader to SPN
             #//------------------------------------------------------------------------------------
-            $token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
+            $token = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleAssignments/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
@@ -386,7 +386,7 @@ if ($tenant) {
             Invoke-WebRequest -Method PUT -Uri $url -ContentType $contentType -Headers $headers -Body $json
         }
         if ($agreementType -eq "MCA") {
-            $token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString:$false).Token
+            $token = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/createBillingRoleAssignment?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
