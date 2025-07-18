@@ -101,6 +101,8 @@ Install-Module-If-Needed Az.Billing
 Install-Module-If-Needed Microsoft.Graph.Authentication
 Install-Module-If-Needed Microsoft.Graph.Applications
 Install-Module-If-Needed Microsoft.Graph.Identity.DirectoryManagement
+Install-Module-If-Needed Az.Accounts
+Install-Module-If-Needed Az.Resources
 
 #//------------------------------------------------------------------------------------
 #//  Import the modules into the session
@@ -149,7 +151,31 @@ $CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # "Ca
 #//------------------------------------------------------------------------------------
 #//  Login to Azure
 #//------------------------------------------------------------------------------------
-Login-AzAccount -WarningAction SilentlyContinue -DeviceCode
+# Prompt for login method
+$loginChoice = Read-Host "Choose login method (1: Interactive Browser 2: Device Code ) [default: 1]"
+if ([string]::IsNullOrWhiteSpace($loginChoice) -or ($loginChoice -ne "1" -and $loginChoice -ne "2")) {
+    $loginChoice = "1"
+}
+
+# Ask for specific tenant ID
+$tenantIdPrompt = Read-Host "Enter specific tenant ID to log into (leave empty for default tenant)"
+$tenantParam = @{}
+if (-not [string]::IsNullOrWhiteSpace($tenantIdPrompt)) {
+    $tenantParam = @{TenantId = $tenantIdPrompt}
+    Write-Host "Will connect to tenant: $tenantIdPrompt" -ForegroundColor Cyan
+}
+
+# Execute login based on choice
+switch ($loginChoice) {
+    "2" {
+        Write-Host "Logging in with device code authentication..." -ForegroundColor Cyan
+        Connect-AzAccount -WarningAction SilentlyContinue -UseDeviceAuthentication @tenantParam
+    }
+    default {
+        Write-Host "Logging in with interactive browser authentication..." -ForegroundColor Cyan
+        Connect-AzAccount -WarningAction SilentlyContinue @tenantParam
+    }
+}
 
 Write-Host "Authentication Success" -ForegroundColor Green
 
@@ -202,7 +228,20 @@ if ($tenant) {
     #//                              Connect to Microsoft Graph
     #//------------------------------------------------------------------------------------
     # Connect to Microsoft Graph with required permissions
-    Connect-MgGraph -TenantId $RootTenantID -Scopes "Application.ReadWrite.All", "Directory.Read.All" -UseDeviceCode
+    # Use the same tenant ID that was specified for Azure login
+    $graphTenantId = $RootTenantID
+    if (-not [string]::IsNullOrWhiteSpace($tenantIdPrompt)) {
+        $graphTenantId = $tenantIdPrompt
+    }
+
+    # Use the same authentication method as Azure login
+    if ($loginChoice -eq "1") {
+        Write-Host "Connecting to Microsoft Graph with interactive browser authentication..." -ForegroundColor Cyan
+        Connect-MgGraph -TenantId $graphTenantId -Scopes "Application.ReadWrite.All", "Directory.Read.All"
+    } else {
+        Write-Host "Connecting to Microsoft Graph with device code authentication..." -ForegroundColor Cyan
+        Connect-MgGraph -TenantId $graphTenantId -Scopes "Application.ReadWrite.All", "Directory.Read.All" -UseDeviceCode
+    }
 
     #//------------------------------------------------------------------------------------
     #//  List Agreement Types
@@ -334,6 +373,11 @@ if ($tenant) {
         #//                            Assign Reservation Reader
         #//------------------------------------------------------------------------------------
         New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
+
+        #//------------------------------------------------------------------------------------
+        #//                            Assign Savings Plan Reader
+        #//------------------------------------------------------------------------------------
+        New-AzRoleAssignment -Scope "/providers/Microsoft.BillingBenefits" -PrincipalId $EnterpriseObjectId -RoleDefinitionName "Savings Plan Reader"
 
         #//------------------------------------------------------------------------------------
         #//                         Assign Carbon Optimization Reader

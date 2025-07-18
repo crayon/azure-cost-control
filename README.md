@@ -81,7 +81,7 @@ The script will perform the following tasks:
 ## Usage Instructions
 ### Download the Script:
 
-1. Visit the [GitHub repository](https://github.com/CrayonCustomers/azure-cost-control/)
+1. Visit the [GitHub repository](https://github.com/crayon/azure-cost-control/)
 2. Locate the "Assign-AzureFinOpsRole.ps1" file to assign Azure FinOps Roles.
 3. Click on the file to view its contents.
 4. Right-click on the "Raw" button or the script contents and select "Save As" to download the script.
