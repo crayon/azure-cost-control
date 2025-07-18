@@ -26,6 +26,7 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 
 ## Version Information
+- **Version**: 1.0.7 **Authors**: Karol Kępka
 - **Version**: 1.0.6 **Authors**: Karol Kępka
 - **Version**: 1.0.5 **Authors**: Karol Kępka
 - **Version**: 1.0.4 **Authors**: Karol Kępka
@@ -80,7 +81,7 @@ The script will perform the following tasks:
 ## Usage Instructions
 ### Download the Script:
 
-1. Visit the [GitHub repository](https://github.com/CrayonCustomers/azure-cost-control/)
+1. Visit the [GitHub repository](https://github.com/crayon/azure-cost-control/)
 2. Locate the "Assign-AzureFinOpsRole.ps1" file to assign Azure FinOps Roles.
 3. Click on the file to view its contents.
 4. Right-click on the "Raw" button or the script contents and select "Save As" to download the script.
@@ -95,6 +96,11 @@ The script will perform the following tasks:
 - Securely send the generated CSV file to [Crayon](mailto:CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
 
 ## Release Notes
+
+### Version 1.0.7
+#### Improved support for MCA agreements
+
+Improved support for Microsoft Customer Agreement (MCA) billing accounts, allowing the script to fetch billing account IDs for both EA and MCA agreements.
 
 ### Version 1.0.6
 #### Fixed propagation issue on some environments
