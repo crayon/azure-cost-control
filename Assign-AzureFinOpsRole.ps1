@@ -1,8 +1,8 @@
 <#PSScriptInfo
 
-.VERSION 1.0.7
+.VERSION 1.0.8
 
-.AUTHOR Claus Sonderstrup, Suman Bhushal, Karol Kępka Crayon. http://www.crayon.com
+.AUTHOR Claus Sonderstrup, Suman Bhushal, Karol Kępka, Tómas Harry Ottósson Crayon. http://www.crayon.com
 
 .COMPANYNAME Crayon
 
@@ -16,6 +16,7 @@ Change Log:
 1.0.5 - Updated Get-AzAccessToken calls to use -AsSecureString:$false to prepare for Az version 14.0.0 breaking changes
 1.0.6 - Fixed Service Principal propagation time issue that could happen at some environments by increasing wait time after creating the Service Principal.
 1.0.7 - Improved support for Microsoft Customer Agreement (MCA) billing accounts, allowing the script to fetch billing account IDs for both EA and MCA agreements.
+1.0.8 - Added login method selection (Interactive Browser/Device Code), added tenant selection capability, aligned Microsoft Graph authentication with Azure authentication method, improved secure token handling using NetworkCredential with AsSecureString parameter, added role assignments for BillingBenefits provider roles.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
