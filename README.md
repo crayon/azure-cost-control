@@ -15,6 +15,8 @@
     - [Download the Script:](#download-the-script)
   - [Notes](#notes)
   - [Release Notes](#release-notes)
+    - [Version 1.0.8](#version-108)
+    - [Version 1.0.7](#version-107)
     - [Version 1.0.6](#version-106)
     - [Version 1.0.5](#version-105)
     - [Version 1.0.4](#version-104)
@@ -26,10 +28,8 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 
 ## Version Information
-- **Version**: 1.0.7 **Authors**: Karol Kępka
-- **Version**: 1.0.6 **Authors**: Karol Kępka
-- **Version**: 1.0.5 **Authors**: Karol Kępka
-- **Version**: 1.0.4 **Authors**: Karol Kępka
+- **Version**: 1.0.8 **Authors**: Tómas Harry Ottósson, Karol Kępka
+- **Version**: 1.0.4 - 1.0.7 **Authors**: Karol Kępka
 - **Version**: 1.0.3 (initial) **Authors**: Claus Sonderstrup, Suman Bhushal, Antti Mustonen
 - **Company**: Crayon
 
@@ -73,7 +73,7 @@ The script will perform the following tasks:
    - Fetch billing account id if agreement type is EA or MCA
    - Create a directory named "Crayon" on the local machine.
    - Create an Azure Active Directory Application and Service Principal (SPN).
-   - Assign Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
+   - Assign Reader, Cost Management Reader, Reservation Reader, SavingsPlans Reader and BillingBenefits Reader roles.
    - Check and validate permissions for subscriptions, management groups, reservations, and billing accounts.
    - Export information about tenants and secrets to a CSV file in the "Crayon" directory.
 
@@ -93,9 +93,21 @@ The script will perform the following tasks:
 - The script checks and validates various permissions related to Azure subscriptions, management groups, reservations, SavingsPlans, and billing accounts.
 - It performs role assignments to ensure proper access for the created Azure Active Directory Application.
 - Results and summary information are displayed at the end of the script execution.
-- Securely send the generated CSV file to [Crayon](mailto:CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
+- Securely send information from generated CSV file using https://deila.sensa.is to [Crayon](mailto:CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
 
 ## Release Notes
+
+### Version 1.0.8
+#### Introduced logging, tenant, BillingBenefits and token retrieval changes
+Added login method selection (Interactive Browser/Device Code) 
+Added tenant selection capability
+Aligned Microsoft Graph authentication with Azure authentication method
+Improved secure token handling using NetworkCredential with AsSecureString parameter
+Added role assignments for BillingBenefits provider role enabling future capabilities of:
+- View and read savings plans across the entire tenant
+- Access details about existing savings plans including commitment amounts, terms, utilization, and savings
+- See savings plan recommendations and eligibility
+New role assignment cannot modify, create, or delete savings plans (read-only access)
 
 ### Version 1.0.7
 #### Improved support for MCA agreements
