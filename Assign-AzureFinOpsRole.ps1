@@ -195,7 +195,7 @@ if ($provider.RegistrationState -ne 'Registered') {
     Start-Sleep -Seconds 10
 }
 
-$tenantRootMG = Get-AzManagementGroup -GroupId $azContext.tenant.ID -WarningAction SilentlyContinue
+$tenantRootMG = Get-AzManagementGroup -GroupName $azContext.tenant.ID -WarningAction SilentlyContinue
 $tenant = Get-AzTenant
 
 if ($tenant) {
