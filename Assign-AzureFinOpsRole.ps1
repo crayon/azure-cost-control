@@ -102,8 +102,6 @@ Install-Module-If-Needed Az.Billing
 Install-Module-If-Needed Microsoft.Graph.Authentication
 Install-Module-If-Needed Microsoft.Graph.Applications
 Install-Module-If-Needed Microsoft.Graph.Identity.DirectoryManagement
-Install-Module-If-Needed Az.Accounts
-Install-Module-If-Needed Az.Resources
 
 #//------------------------------------------------------------------------------------
 #//  Import the modules into the session

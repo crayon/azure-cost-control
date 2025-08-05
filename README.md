@@ -1,19 +1,13 @@
 # Crayon Azure Cost Control Onboarding PowerShell Script
-
-## Table of Contents
-
-- [Crayon Azure Cost Control Onboarding PowerShell Script](#crayon-azure-cost-control-onboarding-powershell-script)
-  - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
   - [Version Information](#version-information)
-  - [Role Required](#role-required)
   - [Prerequisites](#prerequisites)
-  - [Script Information](#script-information)
-    - [Assign-AzureFinOpsRole](#assign-azurefinopsrole)
+    - [Powershell modules](#powershell-modules)
+    - [Powershell environment](#powershell-environment)
+    - [System requirements](#powershell-modules)
+    - [Azure requirements](#azure-requirements)
+    - [Role Required](#role-required)
   - [Usage](#usage)
-  - [Usage Instructions](#usage-instructions)
-    - [Download the Script:](#download-the-script)
-  - [Notes](#notes)
   - [Release Notes](#release-notes)
     - [Version 1.0.8](#version-108)
     - [Version 1.0.7](#version-107)
@@ -34,66 +28,112 @@ This PowerShell script is designed to automate the setup and validation of permi
 - **Company**: Crayon
 
 
-## Role Required
-- **Global Administrator with elevated access** in Microsoft Entra ID.
 
-    Elevating your access provides permissions to all subscriptions and management groups in your directory. This can be helpful in situations where Global Administrator rights alone do not grant the required access.
-
-    Here is the link to elevate your access: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal 
-    This involves settings the "Access management for Azure Resources" to enabled.
-
-  - **Note:** Please note that elevated access should be removed immediately after running the necessary scripts.
-- If an **Enterprise Agreement** with Microsoft, additionally, the **Enterprise Administrator** role is required to assign the "Enrollment Reader" role to the service principal name.
 
 
 ## Prerequisites
 
-- PowerShell modules: Az, Az.Accounts, Az.Reservations, Az.BillingBenefits, Az.Resources, Az.Billing, Microsoft.Graph.Authentication, Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement
+### PowerShell Modules
+The following PowerShell modules are required. The script will automatically install them if not present:
+- **Az.Accounts** - Azure authentication and account management
+- **Az.Reservations** - Azure reservations management
+- **Az.BillingBenefits** - Azure savings plans and billing benefits
+- **Az.Resources** - Azure resource management and RBAC
+- **Az.Billing** - Azure billing account management
+- **Microsoft.Graph.Authentication** - Microsoft Graph authentication
+- **Microsoft.Graph.Applications** - Microsoft Graph app registration management
+- **Microsoft.Graph.Identity.DirectoryManagement** - Microsoft Graph directory operations
 
-Ensure that the required modules are installed before running the script. The script will attempt to install them if they are not already present.
+### PowerShell Environment
+- **PowerShell 5.1** or **PowerShell 7.x** (recommended)
+- **Windows PowerShell**, **PowerShell Core**, or **Azure Cloud Shell** (recommended)
+- **Execution Policy** set to allow script execution:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
 
-## Script Information
-### Assign-AzureFinOpsRole
-The script will perform the following tasks:
-   - Install necessary PowerShell modules if not already installed.
-   - Authenticate to Azure using `Login-AzAccount`.
-   - Create a location named "c:\crayon" on the local machine windows machine and on Linux $home/crayon. 
-   - Create an Azure Active Directory Application and Service Principal (SPN).
-   - Assign Reader, Carbon Optimization Reader, Cost Management Reader, Reservation Reader, and Reader to SavingsPlans roles.
-   - Check and validate permissions for subscriptions, management groups, reservations, and billing accounts.
-   - Save information about tenants and secrets to a CSV file in the "Crayon" directory.
+### System Requirements
+- **Local file system access** for creating directories and files:
+  - Windows: `C:\crayon`
+  - Linux/macOS: `~/crayon`
+- ***Administrative privileges*** may be required for module installation
+
+### Azure Environment Prerequisites
+- Valid Azure subscription with active billing account
+- Appropriate agreement type: ***Enterprise Agreement (EA)***, ***Microsoft Customer Agreement (MCA)***, or ***Cloud Solution Provider (CSP)***
+- For EA customers: Enrollment must be onboarded to Azure portal for modern billing API access
+
+
+### Role Required
+
+#### Microsoft Entra ID (Azure AD) Permissions
+- ***Global Administrator*** or ***Application Administrator*** role in Microsoft Entra ID
+- ***Elevated access to Azure resources** must be enabled for Global Administrators:
+  - Navigate to: Microsoft Entra ID → Properties → "Access management for Azure resources" → ***Yes***
+  - Documentation: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal
+  - **Important:** Remove elevated access immediately after running the script
+
+#### Azure RBAC Permissions
+- ***User Access Administrator** role at the root management group level (granted automatically with elevated Global Admin access)
+- ***Management Group Reader** role (minimum) to access management group hierarchy
+- Permission to register Azure resource providers (Microsoft.Management, Microsoft.Capacity, Microsoft.BillingBenefits)
+
+### Agreement-Specific Requirements
+
+***For Enterprise Agreement (EA) customers:***
+- ***Enterprise Administrator** role in the EA portal (ea.azure.com or billing.microsoft.com)
+- EA enrollment must be ***onboarded to Azure portal*** for modern billing API access
+- Without proper EA onboarding, the script will fail with billing account access errors
+
+***For Microsoft Customer Agreement (MCA) customers:***
+- ***Billing Account Administrator*** or ***Billing Profile Owner*** role
+- Access to Cost Management + Billing in Azure portal
+
+***For Cloud Solution Provider (CSP) customers:***
+- **Admin Agent** role in Partner Center
+- Access to customer's Azure subscriptions
+
+#### Microsoft Graph API Permissions
+The script requests the following Microsoft Graph scopes:
+- `Application.ReadWrite.All` - To create and manage app registrations
+- `Directory.Read.All` - To read directory information
+
 
 ## Usage
 
-1. Run the script in a PowerShell environment.
-2. The script will prompt you to select an Agreement Type (EA, MCA, or CSP).
-3. The script will perform the following tasks:
-   - Install necessary PowerShell modules if not already installed.
-   - Authenticate to Azure using `Login-AzAccount`.
-   - Fetch billing account id if agreement type is EA or MCA
-   - Create a directory named "Crayon" on the local machine.
-   - Create an Azure Active Directory Application and Service Principal (SPN).
-   - Assign Reader, Cost Management Reader, Reservation Reader, SavingsPlans Reader and BillingBenefits Reader roles.
-   - Check and validate permissions for subscriptions, management groups, reservations, and billing accounts.
-   - Export information about tenants and secrets to a CSV file in the "Crayon" directory.
-
-
-## Usage Instructions
-### Download the Script:
-
-1. Visit the [GitHub repository](https://github.com/crayon/azure-cost-control/)
-2. Locate the "Assign-AzureFinOpsRole.ps1" file to assign Azure FinOps Roles.
-3. Click on the file to view its contents.
-4. Right-click on the "Raw" button or the script contents and select "Save As" to download the script.
-5. Navigate to the folder where the script is downloaded, right-click on the file, and choose "Open with PowerShell."
-
-
-## Notes
-
-- The script checks and validates various permissions related to Azure subscriptions, management groups, reservations, SavingsPlans, and billing accounts.
-- It performs role assignments to ensure proper access for the created Azure Active Directory Application.
-- Results and summary information are displayed at the end of the script execution.
-- Securely send information from generated CSV file using https://deila.sensa.is to [Crayon](mailto:CloudCostControl@crayon.com) and delete the "Crayon" directory from the local machine after the email has been sent.
+1. Run the script in Azure Cloud Shell (recommended) or PowerShell environment.
+2. The script will ask about authentication method:
+   - **Option 1:** Interactive Browser (default)
+   - **Option 2:** Device Code
+3. The script will prompt for a specific tenant ID (optional - leave empty for default tenant).
+4. The script will prompt you to select an Agreement Type:
+   - **1:** Enterprise Agreement (EA)
+   - **2:** Microsoft Customer Agreement (MCA) 
+   - **3:** Cloud Solution Provider (CSP)
+5. The script will perform the following tasks:
+   - Install necessary PowerShell modules if not already installed
+   - Authenticate to Azure using `Connect-AzAccount`
+   - Connect to Microsoft Graph with required permissions
+   - Fetch billing account ID if agreement type is EA or MCA
+   - Create a directory named "crayon" on the local machine (C:\crayon on Windows, ~/crayon on Linux/macOS)
+   - Verify no existing "CrayonCloudEconomicsReader" app registration exists
+   - Create an Azure Active Directory Application and Service Principal (SPN)
+   - Set expiration date for the service principal (default 36 months, customizable)
+   - Assign the following roles to the service principal:
+     - Reader (at management group level)
+     - Cost Management Reader (at management group level)  
+     - Reservations Reader (at Microsoft.Capacity provider level)
+     - Savings Plan Reader (at Microsoft.BillingBenefits provider level)
+     - Carbon Optimization Reader (at management group level)
+     - Reader role to individual savings plans (if any exist)
+   - Assign billing-specific roles based on agreement type:
+     - **EA:** Enrollment Reader role via Billing API
+     - **MCA:** Billing Account Reader role via Billing API
+   - Validate permissions for subscriptions, management groups, reservations, savings plans, and billing accounts
+   - Export tenant information and service principal details to a CSV file in the "crayon" directory
+   - Perform comprehensive validation tests using the created service principal to verify all permissions are working correctly
+  
+ Collected data from generated CSV file should be securely sent using https://deila.sensa.is to Crayon representative.
 
 ## Release Notes
 
