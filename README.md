@@ -74,19 +74,19 @@ The following PowerShell modules are required. The script will automatically ins
   - **Important:** Remove elevated access immediately after running the script
 
 #### Azure RBAC Permissions
-- ***User Access Administrator** role at the root management group level (granted automatically with elevated Global Admin access)
-- ***Management Group Reader** role (minimum) to access management group hierarchy
+- **User Access Administrator** role at the root management group level (granted automatically with elevated Global Admin access)
+- **Management Group Reader** role (minimum) to access management group hierarchy
 - Permission to register Azure resource providers (Microsoft.Management, Microsoft.Capacity, Microsoft.BillingBenefits)
 
 ### Agreement-Specific Requirements
 
 ***For Enterprise Agreement (EA) customers:***
-- ***Enterprise Administrator** role in the EA portal (ea.azure.com or billing.microsoft.com)
-- EA enrollment must be ***onboarded to Azure portal*** for modern billing API access
+- **Enterprise Administrator** role in the EA portal (ea.azure.com or billing.microsoft.com)
+- EA enrollment must be **onboarded to Azure portal** for modern billing API access
 - Without proper EA onboarding, the script will fail with billing account access errors
 
 ***For Microsoft Customer Agreement (MCA) customers:***
-- ***Billing Account Administrator*** or ***Billing Profile Owner*** role
+- **Billing Account Administrator*** or ** Billing Profile Owner** role
 - Access to Cost Management + Billing in Azure portal
 
 ***For Cloud Solution Provider (CSP) customers:***
