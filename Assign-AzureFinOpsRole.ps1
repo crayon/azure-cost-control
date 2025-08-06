@@ -1,8 +1,8 @@
 <#PSScriptInfo
 
-.VERSION 1.0.6
+.VERSION 1.0.8
 
-.AUTHOR Claus Sonderstrup and Suman Bhushal, Crayon. http://www.crayon.com
+.AUTHOR Claus Sonderstrup, Suman Bhushal, Karol Kępka, Tómas Harry Ottósson Crayon. http://www.crayon.com
 
 .COMPANYNAME Crayon
 
@@ -15,6 +15,8 @@ Change Log:
 1.0.4 - Updated to use Microsoft Graph PowerShell SDK instead of deprecated AzureAD modules. Changed login method to use DeviceCode flow for better compatibility, and added error handling for module installation and import.
 1.0.5 - Updated Get-AzAccessToken calls to use -AsSecureString:$false to prepare for Az version 14.0.0 breaking changes
 1.0.6 - Fixed Service Principal propagation time issue that could happen at some environments by increasing wait time after creating the Service Principal.
+1.0.7 - Improved support for Microsoft Customer Agreement (MCA) billing accounts, allowing the script to fetch billing account IDs for both EA and MCA agreements.
+1.0.8 - Added login method selection (Interactive Browser/Device Code), added tenant selection capability, aligned Microsoft Graph authentication with Azure authentication method, improved secure token handling using NetworkCredential with AsSecureString parameter, added role assignments for BillingBenefits provider roles.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "stop"
@@ -148,7 +150,31 @@ $CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # "Ca
 #//------------------------------------------------------------------------------------
 #//  Login to Azure
 #//------------------------------------------------------------------------------------
-Login-AzAccount -WarningAction SilentlyContinue -DeviceCode
+# Prompt for login method
+$loginChoice = Read-Host "Choose login method (1: Interactive Browser 2: Device Code ) [default: 1]"
+if ([string]::IsNullOrWhiteSpace($loginChoice) -or ($loginChoice -ne "1" -and $loginChoice -ne "2")) {
+    $loginChoice = "1"
+}
+
+# Ask for specific tenant ID
+$tenantIdPrompt = Read-Host "Enter specific tenant ID to log into (leave empty for default tenant)"
+$tenantParam = @{}
+if (-not [string]::IsNullOrWhiteSpace($tenantIdPrompt)) {
+    $tenantParam = @{TenantId = $tenantIdPrompt}
+    Write-Host "Will connect to tenant: $tenantIdPrompt" -ForegroundColor Cyan
+}
+
+# Execute login based on choice
+switch ($loginChoice) {
+    "2" {
+        Write-Host "Logging in with device code authentication..." -ForegroundColor Cyan
+        Connect-AzAccount -WarningAction SilentlyContinue -UseDeviceAuthentication @tenantParam
+    }
+    default {
+        Write-Host "Logging in with interactive browser authentication..." -ForegroundColor Cyan
+        Connect-AzAccount -WarningAction SilentlyContinue @tenantParam
+    }
+}
 
 Write-Host "Authentication Success" -ForegroundColor Green
 
@@ -167,7 +193,7 @@ if ($provider.RegistrationState -ne 'Registered') {
     Start-Sleep -Seconds 10
 }
 
-$tenantRootMG = Get-AzManagementGroup -GroupId $azContext.tenant.ID -WarningAction SilentlyContinue
+$tenantRootMG = Get-AzManagementGroup -GroupName $azContext.tenant.ID -WarningAction SilentlyContinue
 $tenant = Get-AzTenant
 
 if ($tenant) {
@@ -201,7 +227,20 @@ if ($tenant) {
     #//                              Connect to Microsoft Graph
     #//------------------------------------------------------------------------------------
     # Connect to Microsoft Graph with required permissions
-    Connect-MgGraph -TenantId $RootTenantID -Scopes "Application.ReadWrite.All", "Directory.Read.All" -UseDeviceCode
+    # Use the same tenant ID that was specified for Azure login
+    $graphTenantId = $RootTenantID
+    if (-not [string]::IsNullOrWhiteSpace($tenantIdPrompt)) {
+        $graphTenantId = $tenantIdPrompt
+    }
+
+    # Use the same authentication method as Azure login
+    if ($loginChoice -eq "1") {
+        Write-Host "Connecting to Microsoft Graph with interactive browser authentication..." -ForegroundColor Cyan
+        Connect-MgGraph -TenantId $graphTenantId -Scopes "Application.ReadWrite.All", "Directory.Read.All"
+    } else {
+        Write-Host "Connecting to Microsoft Graph with device code authentication..." -ForegroundColor Cyan
+        Connect-MgGraph -TenantId $graphTenantId -Scopes "Application.ReadWrite.All", "Directory.Read.All" -UseDeviceCode
+    }
 
     #//------------------------------------------------------------------------------------
     #//  List Agreement Types
@@ -232,12 +271,12 @@ if ($tenant) {
     switch ($choice) {
         1 {
             $agreementType = "EA"
-            $accessToken = (Get-AzAccessToken -AsSecureString:$false).Token
+            $accessToken = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         2 {
             $agreementType = "MCA" 
-            $accessToken = (Get-AzAccessToken -AsSecureString:$false).Token
+            $accessToken = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $enrolmentId = Fetch-EEAMCABillingAccounts -bearerToken $accessToken
         }
         3 {
@@ -335,6 +374,11 @@ if ($tenant) {
         New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
 
         #//------------------------------------------------------------------------------------
+        #//                            Assign Savings Plan Reader
+        #//------------------------------------------------------------------------------------
+        New-AzRoleAssignment -Scope "/providers/Microsoft.BillingBenefits" -PrincipalId $EnterpriseObjectId -RoleDefinitionName "Savings Plan Reader"
+
+        #//------------------------------------------------------------------------------------
         #//                         Assign Carbon Optimization Reader
         #//------------------------------------------------------------------------------------
         New-AzRoleAssignment -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID" -PrincipalId $EnterpriseObjectId -RoleDefinitionId $CarbonOptimizationRoleAssignment
@@ -370,7 +414,7 @@ if ($tenant) {
             #//------------------------------------------------------------------------------------
             #//                           Assign Enrollment Reader to SPN
             #//------------------------------------------------------------------------------------
-            $token = (Get-AzAccessToken -AsSecureString:$false).Token
+            $token = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/billingRoleAssignments/24f8edb6-1668-4659-b5e2-40bb5f3a7d7e?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
@@ -385,7 +429,7 @@ if ($tenant) {
             Invoke-WebRequest -Method PUT -Uri $url -ContentType $contentType -Headers $headers -Body $json
         }
         if ($agreementType -eq "MCA") {
-            $token = (Get-AzAccessToken -AsSecureString:$false).Token
+            $token = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
             $url = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/$enrolmentId/createBillingRoleAssignment?api-version=2019-10-01-preview"
             $headers = @{'Authorization' = "Bearer $token" }
             $contentType = "application/json"
