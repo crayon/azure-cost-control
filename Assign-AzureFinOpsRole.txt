@@ -324,7 +324,7 @@ if ($tenant) {
     #//                       Create a new AD Application and SPN
     #//------------------------------------------------------------------------------------
         $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate
-        Write-Host "Waiting for Service Principal to be created..." -ForegroundColor Yellow
+        Write-Host "Waiting for Service Principal to be propagated..." -ForegroundColor Yellow
         Start-Sleep -Seconds 25        
         if ($sp) {
             Write-Host "Service Principal succesfully created with AppId: $($sp.AppId)" -ForegroundColor Green
@@ -354,9 +354,10 @@ if ($tenant) {
             Write-Host "Successful Reader Role Assignment" -ForegroundColor Green
         }
         Catch {
-            Write-Host "Failed Reader Role Assignment" -ForegroundColor Red
-        }     
-        
+            $roleError = "Reader Role Assignment: " + $_.Exception.Message + ". "
+            Write-Host "Failed Reader Role Assignment - does user have User Access Administrator role on the Management Group level?"  -ForegroundColor Red
+        }
+
         #//------------------------------------------------------------------------------------
         #//                           Assign Cost Management Reader
         #//------------------------------------------------------------------------------------
@@ -365,23 +366,54 @@ if ($tenant) {
             Write-Host "Successful Cost Management Reader Role Assignment" -ForegroundColor Green
         }
         Catch {
-            Write-Host "Failed Cost Management Reader Role Assignment" -ForegroundColor Red
+            $err = "Failed Cost Management Reader Role Assignment - does user have User Access Administrator role on the Management Group level?"
+            $roleError += $err + " " + $_.Exception.Message + ". "
+            Write-Host $err -ForegroundColor Red
         }
         
         #//------------------------------------------------------------------------------------
         #//                            Assign Reservation Reader
         #//------------------------------------------------------------------------------------
-        New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
+        Try {
+            New-AzRoleAssignment -Scope "/providers/Microsoft.Capacity" -PrincipalId $EnterpriseObjectId -RoleDefinitionName $ReservationRoleAssignment
+            Write-Host "Successful Reservation Reader Role Assignment" -ForegroundColor Green
+        } Catch {
+            $err = "Failed Reservation Reader Role Assignment - does user have User Access Administrator role on the Reservation level?"
+            $roleError += $err + " " + $_.Exception.Message + ". "
+            Write-Host $err -ForegroundColor Red
+        }
 
         #//------------------------------------------------------------------------------------
         #//                            Assign Savings Plan Reader
         #//------------------------------------------------------------------------------------
-        New-AzRoleAssignment -Scope "/providers/Microsoft.BillingBenefits" -PrincipalId $EnterpriseObjectId -RoleDefinitionName "Savings Plan Reader"
-
+        Try {
+            New-AzRoleAssignment -Scope "/providers/Microsoft.BillingBenefits" -PrincipalId $EnterpriseObjectId -RoleDefinitionName "Savings Plan Reader"
+            Write-Host "Successful Savings Plan Reader Role Assignment" -ForegroundColor Green
+        } Catch {
+            $err = "Failed Savings Plan Reader Role Assignment - does user have User Access Administrator role on the Savings Plan level?"
+            $roleError += $err + " " + $_.Exception.Message + ". "            
+            Write-Host $err -ForegroundColor Red
+        }
         #//------------------------------------------------------------------------------------
         #//                         Assign Carbon Optimization Reader
         #//------------------------------------------------------------------------------------
-        New-AzRoleAssignment -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID" -PrincipalId $EnterpriseObjectId -RoleDefinitionId $CarbonOptimizationRoleAssignment
+        Try {
+            New-AzRoleAssignment -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID" -PrincipalId $EnterpriseObjectId -RoleDefinitionId $CarbonOptimizationRoleAssignment
+            Write-Host "Successful Carbon Optimization Reader Role Assignment" -ForegroundColor Green
+        } Catch {
+            $err = "Failed Carbon Optimization Reader Role Assignment - does user have User Access Administrator role on the Management Group level?"
+            $roleError += $err + " " + $_.Exception.Message + ". "
+            Write-Host $err -ForegroundColor Red
+        }
+
+
+        if ($roleError) {
+            Write-Host "Role Assignment Errors Found:" -ForegroundColor Red
+            Write-Host $roleError -ForegroundColor Red
+            Write-Host "Exiting.."
+            exit
+            
+        }
 
         #//------------------------------------------------------------------------------------
         #//                           Assign Reader to SavingsPlans
@@ -448,9 +480,9 @@ if ($tenant) {
     $dateKey = Get-Date -Format "yyyyMMdd"
     $filepath = "$DirectoryPath\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
     $tenantInfo | Export-Csv -Path $filepath
-    Write-Host "Securely send the file from the $DirectoryPath directory to Crayon, then remove the folder." -ForegroundColor Green
-
-    Start-Sleep -Seconds 20
+    Write-Host "File exported to $filepath"
+    Write-Host "Waiting for permissions to be propagated..."
+    Start-Sleep -Seconds 40
 
     #//------------------------------------------------------------------------------------
     #//                                 Choose subscription
@@ -689,6 +721,8 @@ if ($tenant) {
     else {
     Write-Host "No tenant can be read" -ForegroundColor Red
 }
+
+Write-Host -BackgroundColor Black "Script completed successfully. Securely send the file from the $DirectoryPath directory to Crayon using https://deila.sensa.is service, then remove the folder." -ForegroundColor Green
 
 #//------------------------------------------------------------------------------------
 #//                                     DISCONNECT

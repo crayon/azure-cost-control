@@ -9,6 +9,7 @@
     - [Role Required](#role-required)
   - [Usage](#usage)
   - [Release Notes](#release-notes)
+    - [Version 1.0.9](#version-109)
     - [Version 1.0.8](#version-108)
     - [Version 1.0.7](#version-107)
     - [Version 1.0.6](#version-106)
@@ -22,6 +23,7 @@ This PowerShell script is designed to automate the setup and validation of permi
 
 
 ## Version Information
+- **Version**: 1.0.9 **Authors**: Karol Kępka
 - **Version**: 1.0.8 **Authors**: Tómas Harry Ottósson, Karol Kępka
 - **Version**: 1.0.4 - 1.0.7 **Authors**: Karol Kępka
 - **Version**: 1.0.3 (initial) **Authors**: Claus Sonderstrup, Suman Bhushal, Antti Mustonen
@@ -68,7 +70,7 @@ The following PowerShell modules are required. The script will automatically ins
 
 #### Microsoft Entra ID (Azure AD) Permissions
 - ***Global Administrator*** or ***Application Administrator*** role in Microsoft Entra ID
-- ***Elevated access to Azure resources** must be enabled for Global Administrators:
+- ***Elevated access to Azure resources*** must be enabled for Global Administrators:
   - Navigate to: Microsoft Entra ID → Properties → "Access management for Azure resources" → ***Yes***
   - Documentation: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin?tabs=azure-portal
   - **Important:** Remove elevated access immediately after running the script
@@ -86,7 +88,7 @@ The following PowerShell modules are required. The script will automatically ins
 - Without proper EA onboarding, the script will fail with billing account access errors
 
 ***For Microsoft Customer Agreement (MCA) customers:***
-- **Billing Account Administrator*** or ** Billing Profile Owner** role
+- **Billing Account Administrator** or **Billing Profile Owner** role
 - Access to Cost Management + Billing in Azure portal
 
 ***For Cloud Solution Provider (CSP) customers:***
@@ -136,6 +138,11 @@ The script requests the following Microsoft Graph scopes:
  Collected data from generated CSV file should be securely sent using https://deila.sensa.is to Crayon representative.
 
 ## Release Notes
+
+### Version 1.0.9
+#### Propagation Times & Messaging Improvements
+Extended propagation time after role assignment to better support slower environments.
+Added troubleshooting guidance for handling role assignment errors.
 
 ### Version 1.0.8
 #### Introduced logging, tenant, BillingBenefits and token retrieval changes
