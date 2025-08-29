@@ -90,7 +90,6 @@ The following PowerShell modules are required. The script will automatically ins
 - Access to Cost Management + Billing in Azure portal
 
 ***For Cloud Solution Provider (CSP) customers:***
-- **Admin Agent** role in Partner Center
 - Access to customer's Azure subscriptions
 
 #### Microsoft Graph API Permissions
