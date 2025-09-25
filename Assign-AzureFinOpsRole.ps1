@@ -446,7 +446,9 @@ if ($tenant) {
     
     # Converts the list to a csv, path defined at the top of this script
     $dateKey = Get-Date -Format "yyyyMMdd"
-    $filepath = "$DirectoryPath\CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
+    $fileName = $tenant.Name -replace '[\\/:*?"<>|]', ''
+    $fileName = $fileName + '-' + $dateKey + '.csv'
+    $filepath = "$DirectoryPath\CrayonCloudEconomics-" + $fileName
     $tenantInfo | Export-Csv -Path $filepath
     Write-Host "Securely send the file from the $DirectoryPath directory to Crayon, then remove the folder." -ForegroundColor Green
 
