@@ -2,7 +2,7 @@
 
 .VERSION 1.2.0
 
-.AUTHOR Claus Sonderstrup, Suman Bhushal, Karol Kępka, Tómas Harry Ottósson Crayon. http://www.crayon.com
+.AUTHOR Crayon. http://www.crayon.com
 
 .COMPANYNAME Crayon
 
@@ -906,6 +906,7 @@ $tenantInfo += [pscustomobject]@{
     TenantName        = $tenant.Name
     TenantDomain      = $tenant.Domains | Out-String -Width 150
     CountryCode       = $tenant.CountryCode
+    AgreementType     = $agreementType
     AppId             = $sp.AppId
     SecretCredential  = $sp.PasswordCredentials.secretText
     SecretEndDateTime = $sp.PasswordCredentials.endDateTime
@@ -1101,7 +1102,7 @@ $baseName = "CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey
 $infoFilename = $baseName + ".csv"
 $infoFilepath = Join-Path -Path $DirectoryPath -ChildPath $infoFilename
 
-$tenantInfoNoSecret = $tenantInfo | Select-Object TenantId, TenantName, TenantDomain, CountryCode, AppId, SecretEndDateTime
+$tenantInfoNoSecret = $tenantInfo | Select-Object TenantId, TenantName, TenantDomain, CountryCode, AgreementType, AppId, SecretEndDateTime
 
 try {
     $tenantInfoNoSecret | Export-Csv -Path $infoFilepath -NoTypeInformation -ErrorAction Stop
