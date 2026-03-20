@@ -1,8 +1,8 @@
 <#PSScriptInfo
 
-.VERSION 1.1.0
+.VERSION 1.2.0
 
-.AUTHOR Crayon. http://www.crayon.com
+.AUTHOR Claus Sonderstrup, Suman Bhushal, Karol Kępka, Tómas Harry Ottósson Crayon. http://www.crayon.com
 
 .COMPANYNAME Crayon
 
@@ -19,6 +19,7 @@ Change Log:
 1.0.8 - Added login method selection (Interactive Browser/Device Code), added tenant selection capability, aligned Microsoft Graph authentication with Azure authentication method, improved secure token handling using NetworkCredential with AsSecureString parameter, added role assignments for BillingBenefits provider roles.
 1.0.9 - Major error handling and safety overhaul. Added pre-flight permission validation that checks all required permissions (management group access, role assignment rights, Graph permissions, billing account access, existing app registration) BEFORE creating anything - no more orphaned app registrations from permission failures. Added agreement type auto-detection with mismatch warning (catches EA-to-MCA migrations). Wrapped all role assignments in try/catch. Added role assignment summary table. Clear error guidance for every failure mode. Module install falls back to CurrentUser scope. SPN propagation uses retry loop. CSV always generates even if some assignments fail.
 1.1.0 - Replaced blind first-billing-account selection with interactive listing of all billing accounts. Operator now sees every account (ID, display name, agreement type, status) and selects explicitly. Deactivated account selection triggers a confirmation warning before proceeding. Fixes onboarding failures on tenants with mixed EA/MCA billing accounts (e.g. post-migration tenants).
+1.2.0 - Billing-first flow: script now fetches and lists billing accounts BEFORE asking for agreement type. Agreement type is auto-detected from the selected billing account, eliminating manual selection and mismatch issues. Manual agreement type prompt only appears as fallback when billing accounts cannot be accessed (e.g. CSP tenants or missing billing permissions).
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "Stop"
@@ -324,7 +325,7 @@ function Get-DetectedAgreementType {
 # ============================================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.1.0" -ForegroundColor Cyan
+Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.0" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -583,82 +584,60 @@ catch {
 }
 
 # ============================================================================
-#  AGREEMENT TYPE SELECTION WITH AUTO-DETECTION
+#  BILLING ACCOUNT DISCOVERY & AGREEMENT TYPE DETECTION
 # ============================================================================
 Write-Host ""
-Write-Host "Step 4: Agreement Type" -ForegroundColor Cyan
+Write-Host "Step 4: Billing Account & Agreement Type" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Choose an Agreement Type:"
-Write-Host "  1) Enterprise Agreement (EA)"
-Write-Host "  2) Microsoft Customer Agreement (MCA)"
-Write-Host "  3) Cloud Solution Provider (CSP)"
-Write-Host ""
+Write-Host "  Fetching billing accounts to determine agreement type..." -ForegroundColor Cyan
 
-$choice = Read-Host "Enter the number corresponding to the Agreement Type (1, 2, or 3)"
-
-switch ($choice) {
-    1 { $agreementType = "EA" }
-    2 { $agreementType = "MCA" }
-    3 { $agreementType = "CSP" }
-    default {
-        Write-Host "  [FATAL] Invalid choice. Please enter 1, 2, or 3." -ForegroundColor Red
-        exit 1
-    }
-}
-
-Write-Host "  You selected: $agreementType" -ForegroundColor Green
-
-# Fetch billing accounts and auto-detect agreement type for EA/MCA
 $enrolmentId = $null
-$detectedAgreementType = $null
+$agreementType = $null
+$billingAccountAccessible = $false
 
-if ($agreementType -ne "CSP") {
+try {
+    $accessToken = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
+    $billingAccountValues = Fetch-BillingAccounts -bearerToken $accessToken
+    $billingAccountAccessible = $true
+
+    # Let the operator explicitly pick which billing account to use.
+    $selectedAccount = Select-BillingAccount -billingAccountValues $billingAccountValues
+    $enrolmentId = $selectedAccount.name
+    $agreementType = Get-DetectedAgreementType -billingAccountValues $selectedAccount
+
     Write-Host ""
-    Write-Host "  Fetching billing accounts..." -ForegroundColor Cyan
-    
-    try {
-        $accessToken = [Net.NetworkCredential]::new('', ((Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -AsSecureString).Token)).Password
-        $billingAccountValues = Fetch-BillingAccounts -bearerToken $accessToken
+    Write-Host "  [OK] Billing Account ID: $enrolmentId" -ForegroundColor Green
+    Write-Host "  [OK] Agreement Type (auto-detected): $agreementType" -ForegroundColor Green
+}
+catch {
+    Write-Host ""
+    Write-Host "  [WARNING] Could not fetch billing accounts: $_" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  This can happen if:" -ForegroundColor Yellow
+    Write-Host "  - This is a CSP tenant (no direct billing account access)" -ForegroundColor Yellow
+    Write-Host "  - You don't have billing permissions yet" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Falling back to manual agreement type selection..." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Choose an Agreement Type:"
+    Write-Host "  1) Enterprise Agreement (EA)"
+    Write-Host "  2) Microsoft Customer Agreement (MCA)"
+    Write-Host "  3) Cloud Solution Provider (CSP)"
+    Write-Host ""
 
-        # NEW in 1.1.0: Let the operator explicitly pick which billing account to use.
-        # Previously this was $billingAccountValues[0] which caused failures on tenants
-        # with mixed EA/MCA accounts (e.g. Ambeat: MCA active + EA deactivated + EA active).
-        $selectedAccount = Select-BillingAccount -billingAccountValues $billingAccountValues
-        $enrolmentId = $selectedAccount.name
-        $detectedAgreementType = Get-DetectedAgreementType -billingAccountValues $selectedAccount
+    $choice = Read-Host "Enter the number corresponding to the Agreement Type (1, 2, or 3)"
 
-        Write-Host "  [OK] Billing Account ID: $enrolmentId" -ForegroundColor Green
-        Write-Host "  [OK] Detected Agreement Type: $detectedAgreementType" -ForegroundColor Green
-
-        # MISMATCH WARNING
-        if ($detectedAgreementType -ne $agreementType) {
-            Write-Host ""
-            Write-Host "  ================================================================" -ForegroundColor Red
-            Write-Host "  WARNING: AGREEMENT TYPE MISMATCH DETECTED" -ForegroundColor Red
-            Write-Host "  ================================================================" -ForegroundColor Red
-            Write-Host "  You selected:  $agreementType" -ForegroundColor Red
-            Write-Host "  Azure reports: $detectedAgreementType" -ForegroundColor Red
-            Write-Host ""
-            Write-Host "  This is a common issue. Microsoft has been migrating EA" -ForegroundColor Yellow
-            Write-Host "  enrollments to MCA. Your enrollment number may still look" -ForegroundColor Yellow
-            Write-Host "  like EA, but Azure has already converted the billing account." -ForegroundColor Yellow
-            Write-Host ""
-            
-            $continueChoice = Read-Host "  Do you want to continue with the DETECTED type ($detectedAgreementType) instead? (Y/N) [default: Y]"
-            if ([string]::IsNullOrWhiteSpace($continueChoice) -or $continueChoice -eq "Y" -or $continueChoice -eq "y") {
-                $agreementType = $detectedAgreementType
-                Write-Host "  [OK] Switched to agreement type: $agreementType" -ForegroundColor Green
-            }
-            else {
-                Write-Host "  Continuing with originally selected type: $agreementType" -ForegroundColor Yellow
-                Write-Host "  NOTE: Some API calls may fail if the agreement type is incorrect." -ForegroundColor Yellow
-            }
+    switch ($choice) {
+        1 { $agreementType = "EA" }
+        2 { $agreementType = "MCA" }
+        3 { $agreementType = "CSP" }
+        default {
+            Write-Host "  [FATAL] Invalid choice. Please enter 1, 2, or 3." -ForegroundColor Red
+            exit 1
         }
     }
-    catch {
-        Write-Host "  [WARNING] Could not fetch billing accounts: $_" -ForegroundColor Yellow
-        Write-Host "  Continuing without billing account validation." -ForegroundColor Yellow
-    }
+
+    Write-Host "  You selected: $agreementType" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -747,8 +726,13 @@ else {
 
 # --- Check 5: Billing account accessible? (for EA/MCA) ---
 if ($agreementType -ne "CSP") {
-    if ($enrolmentId) {
+    if ($billingAccountAccessible -and $enrolmentId) {
         Write-Host "  [OK] Billing account accessible (ID: $enrolmentId)" -ForegroundColor Green
+    }
+    elseif (-not $billingAccountAccessible) {
+        Write-Host "  [WARNING] Billing accounts could not be fetched earlier" -ForegroundColor Yellow
+        Write-Host "           Billing role assignments may fail without a billing account ID." -ForegroundColor Yellow
+        $preflightWarnings += "Billing account not accessible. Billing-specific role assignments may fail."
     }
     else {
         Write-Host "  [FAILED] Could not access billing account" -ForegroundColor Red
@@ -1108,21 +1092,46 @@ if ($agreementType -eq "MCA") {
 #  EXPORT CSV (always runs, even if some assignments failed)
 # ============================================================================
 Write-Host ""
-Write-Host "Step 8: Exporting CSV..." -ForegroundColor Cyan
+Write-Host "Step 8: Exporting CSV files..." -ForegroundColor Cyan
 
 $dateKey = Get-Date -Format "yyyyMMdd"
-$csvFilename = "CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey + ".csv"
-$filepath = Join-Path -Path $DirectoryPath -ChildPath $csvFilename
+$baseName = "CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey
+
+# --- File 1: Tenant info WITHOUT secrets (safe to share/store) ---
+$infoFilename = $baseName + ".csv"
+$infoFilepath = Join-Path -Path $DirectoryPath -ChildPath $infoFilename
+
+$tenantInfoNoSecret = $tenantInfo | Select-Object TenantId, TenantName, TenantDomain, CountryCode, AppId, SecretEndDateTime
 
 try {
-    $tenantInfo | Export-Csv -Path $filepath -NoTypeInformation -ErrorAction Stop
-    Write-Host "  [OK] CSV exported to: $filepath" -ForegroundColor Green
+    $tenantInfoNoSecret | Export-Csv -Path $infoFilepath -NoTypeInformation -ErrorAction Stop
+    Write-Host "  [OK] Tenant info CSV (no secrets): $infoFilepath" -ForegroundColor Green
 }
 catch {
-    Write-Host "  [FAILED] Could not export CSV: $_" -ForegroundColor Red
+    Write-Host "  [FAILED] Could not export tenant info CSV: $_" -ForegroundColor Red
     Write-Host "  Tenant info for manual use:" -ForegroundColor Yellow
-    $tenantInfo | Format-List
+    $tenantInfoNoSecret | Format-List
 }
+
+# --- File 2: Secrets only (sensitive — handle with care) ---
+$secretFilename = $baseName + "-SECRET.csv"
+$secretFilepath = Join-Path -Path $DirectoryPath -ChildPath $secretFilename
+
+$tenantSecretInfo = $tenantInfo | Select-Object TenantId, AppId, SecretCredential, SecretEndDateTime
+
+try {
+    $tenantSecretInfo | Export-Csv -Path $secretFilepath -NoTypeInformation -ErrorAction Stop
+    Write-Host "  [OK] Secret CSV: $secretFilepath" -ForegroundColor Green
+}
+catch {
+    Write-Host "  [FAILED] Could not export secret CSV: $_" -ForegroundColor Red
+    Write-Host "  Secret info for manual use:" -ForegroundColor Yellow
+    $tenantSecretInfo | Format-List
+}
+
+Write-Host ""
+Write-Host "  NOTE: The SECRET file contains sensitive credentials." -ForegroundColor Yellow
+Write-Host "  Send it separately and securely. Delete it after transfer." -ForegroundColor Yellow
 
 # ============================================================================
 #  ROLE ASSIGNMENT SUMMARY
@@ -1165,7 +1174,7 @@ if ($failedCount -gt 0) {
 }
 
 Write-Host ""
-Write-Host "  Securely send the file from $DirectoryPath to Crayon using:" -ForegroundColor Green
+Write-Host "  Securely send BOTH files from $DirectoryPath to Crayon using:" -ForegroundColor Green
 Write-Host "  https://deila.sensa.is" -ForegroundColor Green
 Write-Host "  Then remove the $DirectoryPath folder." -ForegroundColor Green
 
