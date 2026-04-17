@@ -132,8 +132,12 @@ The script requests the following Microsoft Graph scopes:
    - Validate permissions for subscriptions, management groups, reservations, savings plans, and billing accounts
    - Export tenant information and service principal details to a CSV file in the "crayon" directory
    - Perform comprehensive validation tests using the created service principal to verify all permissions are working correctly
-  
- Collected data from generated CSV file should be securely sent using https://deila.sensa.is to Crayon representative.
+> [!IMPORTANT]   
+> Open the CSV file and copy & paste the entire content through our secure platform https://deila.sensa.is.
+> 
+> Please ensure to change the “Expire secret link and delete after:” days attribute to 7 days (first slider).
+>
+> Then click “Push it!” and copy the secret link generated and share it with your Crayon representative!
 
 ## Release Notes
 
