@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.2.0
+.VERSION 1.2.1
 
 .AUTHOR Crayon. http://www.crayon.com
 
@@ -20,6 +20,7 @@ Change Log:
 1.0.9 - Major error handling and safety overhaul. Added pre-flight permission validation that checks all required permissions (management group access, role assignment rights, Graph permissions, billing account access, existing app registration) BEFORE creating anything - no more orphaned app registrations from permission failures. Added agreement type auto-detection with mismatch warning (catches EA-to-MCA migrations). Wrapped all role assignments in try/catch. Added role assignment summary table. Clear error guidance for every failure mode. Module install falls back to CurrentUser scope. SPN propagation uses retry loop. CSV always generates even if some assignments fail.
 1.1.0 - Replaced blind first-billing-account selection with interactive listing of all billing accounts. Operator now sees every account (ID, display name, agreement type, status) and selects explicitly. Deactivated account selection triggers a confirmation warning before proceeding. Fixes onboarding failures on tenants with mixed EA/MCA billing accounts (e.g. post-migration tenants).
 1.2.0 - Billing-first flow: script now fetches and lists billing accounts BEFORE asking for agreement type. Agreement type is auto-detected from the selected billing account, eliminating manual selection and mismatch issues. Manual agreement type prompt only appears as fallback when billing accounts cannot be accessed (e.g. CSP tenants or missing billing permissions).
+1.2.1 - Improved validation reliability: increased propagation wait from 20s to 60s before SPN self-check, added retry logic with clear propagation-delay messaging for Reservations Reader check (fixes false failures on tenants where provider-scoped roles take longer to propagate).
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "Stop"
@@ -325,7 +326,7 @@ function Get-DetectedAgreementType {
 # ============================================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.0" -ForegroundColor Cyan
+Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.1" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -1179,13 +1180,16 @@ Write-Host "  Securely send BOTH files from $DirectoryPath to Crayon using:" -Fo
 Write-Host "  https://deila.sensa.is" -ForegroundColor Green
 Write-Host "  Then remove the $DirectoryPath folder." -ForegroundColor Green
 
-Start-Sleep -Seconds 20
-
 # ============================================================================
 #  VALIDATION (Self-check with SPN credentials)
 # ============================================================================
 Write-Host ""
 Write-Host "Step 9: Validation (connecting as Service Principal)..." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Waiting 60 seconds for role assignments to propagate..." -ForegroundColor Yellow
+Write-Host "  (Provider-scoped roles like Reservations Reader can take up to" -ForegroundColor Yellow
+Write-Host "  several minutes to propagate across Azure.)" -ForegroundColor Yellow
+Start-Sleep -Seconds 60
 Write-Host ""
 
 $subscriptions = Get-AzSubscription
@@ -1259,24 +1263,44 @@ foreach ($tenantObject in $tenantInfo) {
         $mgmt = "Management Group roles: FAILED. $_"
     }
 
-    # --- Check Reservations ---
+    # --- Check Reservations (with retry for propagation delays) ---
     Write-Host "  Checking reservation access..."
-    try {
-        $reservationObjects = Get-AzReservation -ErrorAction Stop
-        $reservationcount = $reservationObjects.Count
+    $res = $null
+    $reservationRetries = 2
+    for ($attempt = 1; $attempt -le $reservationRetries; $attempt++) {
+        try {
+            $reservationObjects = Get-AzReservation -ErrorAction Stop
+            $reservationcount = $reservationObjects.Count
 
-        if ($reservationcount -gt 0) {
-            Write-Host "  [OK] $reservationcount reservations visible" -ForegroundColor Green
-            $res = "Reservations: OK. $reservationcount visible"
+            if ($reservationcount -gt 0) {
+                Write-Host "  [OK] $reservationcount reservations visible" -ForegroundColor Green
+                $res = "Reservations: OK. $reservationcount visible"
+            }
+            else {
+                Write-Host "  [INFO] 0 reservations visible (none purchased or no access)" -ForegroundColor Yellow
+                $res = "Reservations: CHECK. 0 visible."
+            }
+            break
         }
-        else {
-            Write-Host "  [INFO] 0 reservations visible (none purchased or no access)" -ForegroundColor Yellow
-            $res = "Reservations: CHECK. 0 visible."
+        catch {
+            $resError = "$_"
+            if ($attempt -lt $reservationRetries -and ($resError -like "*AuthorizationFailed*" -or $resError -like "*does not have authorization*")) {
+                Write-Host "  [RETRY] Reservations Reader not yet propagated, waiting 30s... (attempt $attempt/$reservationRetries)" -ForegroundColor Yellow
+                Start-Sleep -Seconds 30
+            }
+            else {
+                if ($resError -like "*AuthorizationFailed*" -or $resError -like "*does not have authorization*") {
+                    Write-Host "  [WARNING] Reservation check failed (propagation delay likely): $resError" -ForegroundColor Yellow
+                    Write-Host "           The Reservations Reader role may need a few more minutes to propagate." -ForegroundColor Yellow
+                    Write-Host "           Re-run validation later or check manually in the Azure Portal." -ForegroundColor Yellow
+                    $res = "Reservations: PROPAGATION_DELAY. Role assigned but not yet effective. Retry in a few minutes."
+                }
+                else {
+                    Write-Host "  [WARNING] Reservation check failed: $resError" -ForegroundColor Yellow
+                    $res = "Reservations: FAILED. $resError"
+                }
+            }
         }
-    }
-    catch {
-        Write-Host "  [WARNING] Reservation check failed: $_" -ForegroundColor Yellow
-        $res = "Reservations: FAILED. $_"
     }
 
     # --- Check Savings Plans ---
