@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.2.1
+.VERSION 1.2.2
 
 .AUTHOR Crayon. http://www.crayon.com
 
@@ -21,6 +21,7 @@ Change Log:
 1.1.0 - Replaced blind first-billing-account selection with interactive listing of all billing accounts. Operator now sees every account (ID, display name, agreement type, status) and selects explicitly. Deactivated account selection triggers a confirmation warning before proceeding. Fixes onboarding failures on tenants with mixed EA/MCA billing accounts (e.g. post-migration tenants).
 1.2.0 - Billing-first flow: script now fetches and lists billing accounts BEFORE asking for agreement type. Agreement type is auto-detected from the selected billing account, eliminating manual selection and mismatch issues. Manual agreement type prompt only appears as fallback when billing accounts cannot be accessed (e.g. CSP tenants or missing billing permissions).
 1.2.1 - Improved validation reliability: increased propagation wait from 20s to 60s before SPN self-check, added retry logic with clear propagation-delay messaging for Reservations Reader check (fixes false failures on tenants where provider-scoped roles take longer to propagate).
+1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "EG A/S" — the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "Stop"
@@ -326,7 +327,7 @@ function Get-DetectedAgreementType {
 # ============================================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.1" -ForegroundColor Cyan
+Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.2" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -1097,7 +1098,22 @@ Write-Host ""
 Write-Host "Step 8: Exporting CSV files..." -ForegroundColor Cyan
 
 $dateKey = Get-Date -Format "yyyyMMdd"
-$baseName = "CrayonCloudEconomics-" + $tenant.Name + "-" + $dateKey
+
+# Sanitize tenant name for use in a filename. Tenant display names can contain
+# characters that are illegal in file paths (e.g. "EG A/S" -> the "/" is a path
+# separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
+# and collapse any runs of "-". This also strips invalid filename chars like
+# < > : " / \ | ? * and spaces in one go.
+$rawTenantName = if ([string]::IsNullOrWhiteSpace($tenant.Name)) { "UnknownTenant" } else { $tenant.Name }
+$safeTenantName = ($rawTenantName -replace '[^A-Za-z0-9._]+', '-').Trim('-')
+if ([string]::IsNullOrWhiteSpace($safeTenantName)) { $safeTenantName = "UnknownTenant" }
+
+if ($safeTenantName -ne $rawTenantName) {
+    Write-Host "  [INFO] Tenant name '$rawTenantName' contains characters not safe for filenames." -ForegroundColor DarkGray
+    Write-Host "         Using sanitized name in filenames: '$safeTenantName'" -ForegroundColor DarkGray
+}
+
+$baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
 
 # --- File 1: Tenant info WITHOUT secrets (safe to share/store) ---
 $infoFilename = $baseName + ".csv"
