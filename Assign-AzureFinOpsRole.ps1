@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.2.2
+.VERSION 1.2.5
 
 .AUTHOR Crayon. http://www.crayon.com
 
@@ -21,10 +21,34 @@ Change Log:
 1.1.0 - Replaced blind first-billing-account selection with interactive listing of all billing accounts. Operator now sees every account (ID, display name, agreement type, status) and selects explicitly. Deactivated account selection triggers a confirmation warning before proceeding. Fixes onboarding failures on tenants with mixed EA/MCA billing accounts (e.g. post-migration tenants).
 1.2.0 - Billing-first flow: script now fetches and lists billing accounts BEFORE asking for agreement type. Agreement type is auto-detected from the selected billing account, eliminating manual selection and mismatch issues. Manual agreement type prompt only appears as fallback when billing accounts cannot be accessed (e.g. CSP tenants or missing billing permissions).
 1.2.1 - Improved validation reliability: increased propagation wait from 20s to 60s before SPN self-check, added retry logic with clear propagation-delay messaging for Reservations Reader check (fixes false failures on tenants where provider-scoped roles take longer to propagate).
-1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "EG A/S" — the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
+1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "Crayon A/S" - the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
+1.2.3 - Hardened tenant-setup section after silent-exit reports: Get-AzResourceProvider, Register-AzResourceProvider and Get-AzTenant are now wrapped in try/catch with friendly diagnostics (previously a terminating error in any of them would kill the script with no message). Added a transcript that automatically captures all output to %TEMP%/crayon-onboarding-<timestamp>.log so silent exits always leave evidence. Added a tenant-context mismatch check that warns when Get-AzContext is pointing at a different tenant than the one the operator typed in (common cause of cross-tenant onboarding failures, e.g. SoftwareOne logged in but trying to onboard a customer tenant).
+1.2.4 - Pre-flight now actually verifies that the operator has a directory role allowing app creation (Global Admin / Application Admin / Cloud Application Admin / Privileged Role Admin), instead of only checking that the Az PowerShell client was granted the Application.ReadWrite.All Graph scope (which is necessary but not sufficient). Improved Service Principal creation error handling: the underlying Insufficient-privileges Graph error is now surfaced verbatim instead of being masked by the downstream "ObjectId is empty" binding error.
+1.2.5 - Removed the directory-role pre-flight check added in 1.2.4. The /me/memberOf-based check produced false negatives for several legitimate scenarios: PIM-activated roles (only some appear), roles assigned via group membership, custom directory roles, and tenants where Directory.Read.All scope was reduced. The actual New-AzADServicePrincipal call is the only reliable source of truth and the existing error handler already explains exactly which role is needed if it fails. Net effect: the script no longer blocks Global Admins (or any other valid role-holder) at pre-flight and just lets the real cmdlet decide.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "Stop"
+
+# ============================================================================
+#  TRANSCRIPT (capture everything, even on silent exit)
+# ============================================================================
+# Always start a transcript so that if the script dies before reaching the
+# friendly error handlers, the operator still has a log file to send back.
+# We pick %TEMP% because it works on every OS and never fails on permissions.
+$script:transcriptPath = $null
+try {
+    $transcriptDir = if ($env:TEMP) { $env:TEMP }
+                     elseif ($env:TMPDIR) { $env:TMPDIR }
+                     elseif (Test-Path "/tmp") { "/tmp" }
+                     else { $HOME }
+    $transcriptStamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $script:transcriptPath = Join-Path -Path $transcriptDir -ChildPath "crayon-onboarding-$transcriptStamp.log"
+    Start-Transcript -Path $script:transcriptPath -Force -ErrorAction Stop | Out-Null
+}
+catch {
+    # Transcript failure is non-fatal. Continue without it.
+    $script:transcriptPath = $null
+}
 
 # ============================================================================
 #  ENVIRONMENT DETECTION
@@ -52,7 +76,7 @@ if ($env:AZUREPS_HOST_ENVIRONMENT -like "*cloud-shell*" -or $env:ACC_CLOUD -eq "
 }
 
 # Detect if we have internet access to PSGallery (bastion/air-gapped detection)
-# Cloud Shell always has internet access, so skip the probe there — the HEAD
+# Cloud Shell always has internet access, so skip the probe there - the HEAD
 # request to PSGallery can fail in Cloud Shell due to proxy/networking quirks
 # even though Install-Module works perfectly fine.
 $script:hasInternetAccess = $true
@@ -290,7 +314,8 @@ function Select-BillingAccount {
     Write-Host "  Selected: $($selection.properties.displayName)" -ForegroundColor Green
     Write-Host "  Agreement: $selectedAgreement | Status: $selectedStatus" -ForegroundColor Green
 
-    # Warn if the selected account is not Active — but allow the operator to override
+    # Warn if the selected account is not Active - but allow the operator to override
+    # Warn if the selected account is not Active - but allow the operator to override
     if ($selectedStatus -ne "Active") {
         Write-Host ""
         Write-Host "  [WARNING] This billing account is not Active (Status: $selectedStatus)." -ForegroundColor Yellow
@@ -327,7 +352,7 @@ function Get-DetectedAgreementType {
 # ============================================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.2" -ForegroundColor Cyan
+Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.5" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -338,6 +363,18 @@ $netInfo = if ($script:hasInternetAccess) { "Online" } else { "No internet (bast
 
 Write-Host "  Environment: $osName | PowerShell $($script:psVersion) | $shellInfo | $netInfo" -ForegroundColor DarkGray
 Write-Host ""
+
+if ($script:transcriptPath) {
+    Write-Host "  Transcript: $($script:transcriptPath)" -ForegroundColor DarkGray
+    Write-Host "  (If anything goes wrong, send this log file to Crayon.)" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+if ($script:transcriptPath) {
+    Write-Host "  Transcript: $($script:transcriptPath)" -ForegroundColor DarkGray
+    Write-Host "  (If anything goes wrong, send this log file to Crayon.)" -ForegroundColor DarkGray
+    Write-Host ""
+}
 
 if (-not $script:hasInternetAccess) {
     Write-Host "  [WARNING] No internet access detected. Module installation will fail" -ForegroundColor Yellow
@@ -374,9 +411,9 @@ $CarbonOptimizationRoleAssignment = "fa0d39e6-28e5-40cf-8521-1eb320653a4c" # Car
 Write-Host ""
 Write-Host "Step 2: Azure Authentication" -ForegroundColor Cyan
 
-# On Cloud Shell, we're already authenticated — skip login choice
+# On Cloud Shell, we're already authenticated - skip login choice
 if ($script:isCloudShell) {
-    Write-Host "  Azure Cloud Shell detected — using existing authentication." -ForegroundColor Green
+    Write-Host "  Azure Cloud Shell detected - using existing authentication." -ForegroundColor Green
     $loginChoice = "cloudshell"
     # Cloud Shell may already have an Az context
     $existingContext = Get-AzContext -ErrorAction SilentlyContinue
@@ -479,10 +516,92 @@ $tenantInfo = @()
 # ============================================================================
 $azContext = Get-AzContext
 
-$provider = Get-AzResourceProvider -ProviderNamespace Microsoft.Management
+# Warn if the operator typed a tenant ID but Get-AzContext is pointing somewhere else.
+# This is a very common cause of cross-tenant onboarding failures (e.g. partner is
+# logged into their own tenant but trying to onboard a customer's tenant). The script
+# would otherwise silently run all the rest of its checks against the wrong tenant.
+if (-not [string]::IsNullOrWhiteSpace($tenantIdPrompt) -and $azContext.Tenant.Id -ne $tenantIdPrompt) {
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  TENANT MISMATCH" -ForegroundColor Red
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  You requested tenant : $tenantIdPrompt" -ForegroundColor Yellow
+    Write-Host "  Az context is on     : $($azContext.Tenant.Id)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  This usually happens when:" -ForegroundColor Yellow
+    Write-Host "  - Your account is a guest in the target tenant but cached creds" -ForegroundColor Yellow
+    Write-Host "    pin you to your home tenant." -ForegroundColor Yellow
+    Write-Host "  - You typed the wrong tenant ID." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Continuing would run all checks against the wrong tenant." -ForegroundColor Yellow
+    Write-Host "  Please re-run after: Disconnect-AzAccount; close PowerShell; sign in fresh." -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
+# Microsoft.Management provider must be registered for Get-AzManagementGroup to work.
+# This call (and Register-AzResourceProvider below it) was previously unprotected and
+# was the most common cause of the script silent-exiting on tenants where the running
+# account has elevated access (User Access Administrator on root MG) but is NOT
+# Contributor/Owner on any subscription - registering a provider requires sub-level
+# write access. Wrapped in try/catch so the operator gets actionable guidance.
+$provider = $null
+try {
+    $provider = Get-AzResourceProvider -ProviderNamespace Microsoft.Management -ErrorAction Stop
+}
+catch {
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  FATAL: Cannot read the Microsoft.Management resource provider state." -ForegroundColor Red
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  This typically means the current Azure context has no usable" -ForegroundColor Yellow
+    Write-Host "  subscription, OR you are not authorized to read providers." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Try:" -ForegroundColor Yellow
+    Write-Host "  - Set-AzContext -Subscription <a-subscription-id-in-this-tenant>" -ForegroundColor Yellow
+    Write-Host "  - Then re-run this script." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Error: $_" -ForegroundColor DarkGray
+    exit 1
+}
+
 if ($provider.RegistrationState -ne 'Registered') {
-    Register-AzResourceProvider -ProviderNamespace Microsoft.Management
-    Start-Sleep -Seconds 10
+    try {
+        Register-AzResourceProvider -ProviderNamespace Microsoft.Management -ErrorAction Stop | Out-Null
+        Start-Sleep -Seconds 10
+    }
+    catch {
+        $regError = "$_"
+        Write-Host ""
+        Write-Host "  ================================================================" -ForegroundColor Red
+        Write-Host "  FATAL: Cannot register the Microsoft.Management provider." -ForegroundColor Red
+        Write-Host "  ================================================================" -ForegroundColor Red
+        Write-Host ""
+        if ($regError -like "*AuthorizationFailed*" -or $regError -like "*does not have authorization*") {
+            Write-Host "  Registering a resource provider requires Contributor (or higher)" -ForegroundColor Yellow
+            Write-Host "  on at least one subscription in this tenant." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  Elevated access only grants User Access Administrator at the" -ForegroundColor Yellow
+            Write-Host "  management group root - that is NOT enough for provider" -ForegroundColor Yellow
+            Write-Host "  registration." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  How to fix:" -ForegroundColor Cyan
+            Write-Host "  Ask a customer admin (or an account with Contributor/Owner on" -ForegroundColor Yellow
+            Write-Host "  a subscription) to run, ONCE:" -ForegroundColor Yellow
+            Write-Host "    Connect-AzAccount -TenantId <this-tenant-id>" -ForegroundColor White
+            Write-Host "    Register-AzResourceProvider -ProviderNamespace Microsoft.Management" -ForegroundColor White
+            Write-Host "    Register-AzResourceProvider -ProviderNamespace Microsoft.Capacity" -ForegroundColor White
+            Write-Host "    Register-AzResourceProvider -ProviderNamespace Microsoft.BillingBenefits" -ForegroundColor White
+            Write-Host ""
+            Write-Host "  Then re-run this script." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "  Error: $regError" -ForegroundColor Red
+        }
+        exit 1
+    }
 }
 
 $tenantRootMG = $null
@@ -495,22 +614,41 @@ catch {
     Write-Host "  FATAL: Cannot access the root management group." -ForegroundColor Red
     Write-Host "  ================================================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "  This usually means elevated access has not been enabled." -ForegroundColor Yellow
+    Write-Host "  This usually means elevated access has not been enabled," -ForegroundColor Yellow
+    Write-Host "  OR the cached Azure token was issued before elevated access" -ForegroundColor Yellow
+    Write-Host "  was turned on (very common - tokens do not refresh automatically)." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  To fix this:" -ForegroundColor Yellow
     Write-Host "  1. Go to: Azure Portal -> Microsoft Entra ID -> Properties" -ForegroundColor Yellow
     Write-Host "  2. Set 'Access management for Azure resources' to YES" -ForegroundColor Yellow
     Write-Host "  3. Click Save" -ForegroundColor Yellow
-    Write-Host "  4. Re-run this script" -ForegroundColor Yellow
+    Write-Host "  4. Disconnect-AzAccount, CLOSE PowerShell, open a NEW terminal" -ForegroundColor Yellow
+    Write-Host "  5. Re-run this script (token must be re-issued to pick up the role)" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  IMPORTANT: You must be a Global Administrator to do this." -ForegroundColor Yellow
     Write-Host "  Remember to set it back to NO after running this script." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  Docs: https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Error: $_" -ForegroundColor DarkGray
     exit 1
 }
 
-$tenant = Get-AzTenant
+$tenant = $null
+try {
+    $tenant = Get-AzTenant -ErrorAction Stop
+}
+catch {
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  FATAL: Cannot read tenant information (Get-AzTenant failed)." -ForegroundColor Red
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Error: $_" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Try: Disconnect-AzAccount; close PowerShell; sign in fresh." -ForegroundColor Yellow
+    exit 1
+}
 
 if (-not $tenant) {
     Write-Host "[FATAL] No tenant can be read. Exiting." -ForegroundColor Red
@@ -704,6 +842,13 @@ catch {
     $preflightWarnings += "Could not verify Graph permissions."
 }
 
+# NOTE (v1.2.5): The directory-role pre-check that lived here in v1.2.4 was
+# removed. Detection via /me/memberOf produced false negatives for several
+# legitimate scenarios (PIM-activated roles, group-assigned roles, custom
+# roles, reduced-scope tenants). The actual New-AzADServicePrincipal call
+# below is the only reliable source of truth and its error handler already
+# explains exactly which role is needed if it fails.
+
 # --- Check 4: Does an app registration already exist? ---
 $appDisplayName = "CrayonCloudEconomicsReader"
 $existingApp = $null
@@ -835,29 +980,65 @@ else {
 }
 
 # Create Service Principal
+# IMPORTANT: New-AzADServicePrincipal internally calls New-AzADApplication. If the
+# inner call fails with "Insufficient privileges", that error is non-terminating
+# inside the cmdlet, so the outer cmdlet continues with a null AppId and then
+# throws a "Cannot bind argument to parameter 'ObjectId' because it is an empty
+# string" downstream binding error. That downstream error is what -ErrorAction Stop
+# catches, masking the real cause. We clear $Error first and then walk every record
+# in $Error after the failure so the operator always sees the real underlying issue.
+$Error.Clear()
 $sp = $null
 try {
     $sp = New-AzADServicePrincipal -DisplayName $appDisplayName -Description "AzureCostControl" -EndDate $EndDate -ErrorAction Stop
 }
 catch {
-    $spCreateError = "$_"
+    $caughtError = "$_"
+
+    # Walk every error record produced during the call (newest -> oldest) and find
+    # the most informative one. The downstream "ObjectId is empty" binding error is
+    # noise; the real story is the Graph "Insufficient privileges" record beneath it.
+    $allErrors = @($Error | ForEach-Object { "$_" })
+    $rootCause = $caughtError
+    foreach ($e in $allErrors) {
+        if ($e -like "*Insufficient privileges*" -or
+            $e -like "*Authorization_RequestDenied*" -or
+            $e -like "*Forbidden*" -or
+            $e -like "*does not have permission*") {
+            $rootCause = $e
+            break
+        }
+    }
+
     Write-Host ""
     Write-Host "  ================================================================" -ForegroundColor Red
     Write-Host "  FATAL: Could not create the Service Principal." -ForegroundColor Red
     Write-Host "  ================================================================" -ForegroundColor Red
     Write-Host ""
-    if ($spCreateError -like "*Insufficient privileges*" -or $spCreateError -like "*Authorization_RequestDenied*" -or $spCreateError -like "*Permission*") {
-        Write-Host "  You do not have permission to create app registrations." -ForegroundColor Yellow
+
+    if ($rootCause -like "*Insufficient privileges*" -or
+        $rootCause -like "*Authorization_RequestDenied*" -or
+        $rootCause -like "*Forbidden*" -or
+        $rootCause -like "*does not have permission*") {
+        Write-Host "  You do not have permission to create app registrations in this tenant." -ForegroundColor Yellow
         Write-Host ""
         Write-Host "  Required role (one of):" -ForegroundColor Yellow
         Write-Host "  - Global Administrator" -ForegroundColor Yellow
         Write-Host "  - Application Administrator" -ForegroundColor Yellow
         Write-Host "  - Cloud Application Administrator" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "  Check: Azure Portal -> Microsoft Entra ID -> Roles and administrators" -ForegroundColor Yellow
+        Write-Host "  Have a Global Admin assign one of the above to your account at:" -ForegroundColor Yellow
+        Write-Host "    Azure Portal -> Microsoft Entra ID -> Roles and administrators" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  NOTE: If the customer disabled 'Users can register applications'" -ForegroundColor Yellow
+        Write-Host "  at the tenant level (common in enterprise tenants), you MUST have" -ForegroundColor Yellow
+        Write-Host "  one of the roles above. Subscription-level Owner is not enough." -ForegroundColor Yellow
     }
     else {
-        Write-Host "  Error: $spCreateError" -ForegroundColor Red
+        Write-Host "  Underlying error: $rootCause" -ForegroundColor Red
+        if ($caughtError -ne $rootCause) {
+            Write-Host "  (Caught error: $caughtError)" -ForegroundColor DarkGray
+        }
     }
     exit 1
 }
@@ -1100,7 +1281,39 @@ Write-Host "Step 8: Exporting CSV files..." -ForegroundColor Cyan
 $dateKey = Get-Date -Format "yyyyMMdd"
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "EG A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
+# separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
+# and collapse any runs of "-". This also strips invalid filename chars like
+# < > : " / \ | ? * and spaces in one go.
+$rawTenantName = if ([string]::IsNullOrWhiteSpace($tenant.Name)) { "UnknownTenant" } else { $tenant.Name }
+$safeTenantName = ($rawTenantName -replace '[^A-Za-z0-9._]+', '-').Trim('-')
+if ([string]::IsNullOrWhiteSpace($safeTenantName)) { $safeTenantName = "UnknownTenant" }
+
+if ($safeTenantName -ne $rawTenantName) {
+    Write-Host "  [INFO] Tenant name '$rawTenantName' contains characters not safe for filenames." -ForegroundColor DarkGray
+    Write-Host "         Using sanitized name in filenames: '$safeTenantName'" -ForegroundColor DarkGray
+}
+
+$baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
+
+# Sanitize tenant name for use in a filename. Tenant display names can contain
+# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
+# separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
+# and collapse any runs of "-". This also strips invalid filename chars like
+# < > : " / \ | ? * and spaces in one go.
+$rawTenantName = if ([string]::IsNullOrWhiteSpace($tenant.Name)) { "UnknownTenant" } else { $tenant.Name }
+$safeTenantName = ($rawTenantName -replace '[^A-Za-z0-9._]+', '-').Trim('-')
+if ([string]::IsNullOrWhiteSpace($safeTenantName)) { $safeTenantName = "UnknownTenant" }
+
+if ($safeTenantName -ne $rawTenantName) {
+    Write-Host "  [INFO] Tenant name '$rawTenantName' contains characters not safe for filenames." -ForegroundColor DarkGray
+    Write-Host "         Using sanitized name in filenames: '$safeTenantName'" -ForegroundColor DarkGray
+}
+
+$baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
+
+# Sanitize tenant name for use in a filename. Tenant display names can contain
+# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
@@ -1131,7 +1344,7 @@ catch {
     $tenantInfoNoSecret | Format-List
 }
 
-# --- File 2: Secrets only (sensitive — handle with care) ---
+# --- File 2: Secrets only (sensitive - handle with care) ---
 $secretFilename = $baseName + "-SECRET.csv"
 $secretFilepath = Join-Path -Path $DirectoryPath -ChildPath $secretFilename
 
@@ -1415,3 +1628,25 @@ Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Script complete. " -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
+
+# Stop the transcript so the log file is flushed and closed.
+if ($script:transcriptPath) {
+    try {
+        Stop-Transcript | Out-Null
+        Write-Host "  Log file: $($script:transcriptPath)" -ForegroundColor DarkGray
+    }
+    catch {
+        # Already stopped or never started - ignore.
+    }
+}
+
+# Stop the transcript so the log file is flushed and closed.
+if ($script:transcriptPath) {
+    try {
+        Stop-Transcript | Out-Null
+        Write-Host "  Log file: $($script:transcriptPath)" -ForegroundColor DarkGray
+    }
+    catch {
+        # Already stopped or never started - ignore.
+    }
+}
