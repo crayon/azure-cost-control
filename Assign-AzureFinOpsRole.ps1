@@ -21,7 +21,7 @@ Change Log:
 1.1.0 - Replaced blind first-billing-account selection with interactive listing of all billing accounts. Operator now sees every account (ID, display name, agreement type, status) and selects explicitly. Deactivated account selection triggers a confirmation warning before proceeding. Fixes onboarding failures on tenants with mixed EA/MCA billing accounts (e.g. post-migration tenants).
 1.2.0 - Billing-first flow: script now fetches and lists billing accounts BEFORE asking for agreement type. Agreement type is auto-detected from the selected billing account, eliminating manual selection and mismatch issues. Manual agreement type prompt only appears as fallback when billing accounts cannot be accessed (e.g. CSP tenants or missing billing permissions).
 1.2.1 - Improved validation reliability: increased propagation wait from 20s to 60s before SPN self-check, added retry logic with clear propagation-delay messaging for Reservations Reader check (fixes false failures on tenants where provider-scoped roles take longer to propagate).
-1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "EG A/S" - the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
+1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "Crayon A/S" - the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
 1.2.3 - Hardened tenant-setup section after silent-exit reports: Get-AzResourceProvider, Register-AzResourceProvider and Get-AzTenant are now wrapped in try/catch with friendly diagnostics (previously a terminating error in any of them would kill the script with no message). Added a transcript that automatically captures all output to %TEMP%/crayon-onboarding-<timestamp>.log so silent exits always leave evidence. Added a tenant-context mismatch check that warns when Get-AzContext is pointing at a different tenant than the one the operator typed in (common cause of cross-tenant onboarding failures, e.g. SoftwareOne logged in but trying to onboard a customer tenant).
 1.2.4 - Pre-flight now actually verifies that the operator has a directory role allowing app creation (Global Admin / Application Admin / Cloud Application Admin / Privileged Role Admin), instead of only checking that the Az PowerShell client was granted the Application.ReadWrite.All Graph scope (which is necessary but not sufficient). Improved Service Principal creation error handling: the underlying Insufficient-privileges Graph error is now surfaced verbatim instead of being masked by the downstream "ObjectId is empty" binding error.
 1.2.5 - Removed the directory-role pre-flight check added in 1.2.4. The /me/memberOf-based check produced false negatives for several legitimate scenarios: PIM-activated roles (only some appear), roles assigned via group membership, custom directory roles, and tenants where Directory.Read.All scope was reduced. The actual New-AzADServicePrincipal call is the only reliable source of truth and the existing error handler already explains exactly which role is needed if it fails. Net effect: the script no longer blocks Global Admins (or any other valid role-holder) at pre-flight and just lets the real cmdlet decide.
@@ -1281,7 +1281,7 @@ Write-Host "Step 8: Exporting CSV files..." -ForegroundColor Cyan
 $dateKey = Get-Date -Format "yyyyMMdd"
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "EG A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
@@ -1297,7 +1297,7 @@ if ($safeTenantName -ne $rawTenantName) {
 $baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "EG A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
@@ -1313,7 +1313,7 @@ if ($safeTenantName -ne $rawTenantName) {
 $baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "EG A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
