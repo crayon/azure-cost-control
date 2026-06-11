@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.2.5
+.VERSION 1.2.6
 
 .AUTHOR Crayon. http://www.crayon.com
 
@@ -21,10 +21,11 @@ Change Log:
 1.1.0 - Replaced blind first-billing-account selection with interactive listing of all billing accounts. Operator now sees every account (ID, display name, agreement type, status) and selects explicitly. Deactivated account selection triggers a confirmation warning before proceeding. Fixes onboarding failures on tenants with mixed EA/MCA billing accounts (e.g. post-migration tenants).
 1.2.0 - Billing-first flow: script now fetches and lists billing accounts BEFORE asking for agreement type. Agreement type is auto-detected from the selected billing account, eliminating manual selection and mismatch issues. Manual agreement type prompt only appears as fallback when billing accounts cannot be accessed (e.g. CSP tenants or missing billing permissions).
 1.2.1 - Improved validation reliability: increased propagation wait from 20s to 60s before SPN self-check, added retry logic with clear propagation-delay messaging for Reservations Reader check (fixes false failures on tenants where provider-scoped roles take longer to propagate).
-1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "Crayon A/S" - the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
+1.2.2 - Fixed CSV export failure when the tenant display name contains characters that are illegal in file paths (e.g. "Customer A/S" - the "/" was being interpreted as a directory separator). Tenant name is now sanitized for use in filenames; non-alphanumeric chars (except "." and "_") are replaced with "-".
 1.2.3 - Hardened tenant-setup section after silent-exit reports: Get-AzResourceProvider, Register-AzResourceProvider and Get-AzTenant are now wrapped in try/catch with friendly diagnostics (previously a terminating error in any of them would kill the script with no message). Added a transcript that automatically captures all output to %TEMP%/crayon-onboarding-<timestamp>.log so silent exits always leave evidence. Added a tenant-context mismatch check that warns when Get-AzContext is pointing at a different tenant than the one the operator typed in (common cause of cross-tenant onboarding failures, e.g. SoftwareOne logged in but trying to onboard a customer tenant).
 1.2.4 - Pre-flight now actually verifies that the operator has a directory role allowing app creation (Global Admin / Application Admin / Cloud Application Admin / Privileged Role Admin), instead of only checking that the Az PowerShell client was granted the Application.ReadWrite.All Graph scope (which is necessary but not sufficient). Improved Service Principal creation error handling: the underlying Insufficient-privileges Graph error is now surfaced verbatim instead of being masked by the downstream "ObjectId is empty" binding error.
 1.2.5 - Removed the directory-role pre-flight check added in 1.2.4. The /me/memberOf-based check produced false negatives for several legitimate scenarios: PIM-activated roles (only some appear), roles assigned via group membership, custom directory roles, and tenants where Directory.Read.All scope was reduced. The actual New-AzADServicePrincipal call is the only reliable source of truth and the existing error handler already explains exactly which role is needed if it fails. Net effect: the script no longer blocks Global Admins (or any other valid role-holder) at pre-flight and just lets the real cmdlet decide.
+1.2.6 - Replaced the fixed 60-second validation wait (which caused false failures on tenants where RBAC propagation took longer) with a Wait-ForCondition polling helper. The validation step now waits a short 20s for propagation to begin, then each check (management group roles, Reservations Reader) polls and retries with backoff for up to 5 minutes, returning as soon as the role becomes effective. The management group role check, which was previously checked exactly once, now polls too. A successful Get-AzReservation returning 0 reservations is correctly treated as success rather than retried.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "Stop"
@@ -111,6 +112,74 @@ function Add-RoleAssignmentResult {
         Scope   = $Scope
         Status  = $Status
         Message = $Message
+    }
+}
+
+# ============================================================================
+#  RETRY / PROPAGATION HELPER
+# ============================================================================
+# Azure RBAC role assignments are eventually consistent - after New-AzRoleAssignment
+# returns, the assignment can take anywhere from a few seconds to several minutes to
+# become effective for read calls. A single fixed Start-Sleep is unreliable: too short
+# and we get false failures, too long and we waste time on the common (fast) case.
+#
+# Wait-ForCondition polls a script block until it returns $true (success) or the overall
+# timeout is reached, returning as soon as the condition is met. The poll interval grows
+# (capped) so we check often early and back off later.
+#
+#   -Condition       : scriptblock that returns $true when the resource is ready.
+#                      Any exception thrown inside is treated as "not ready yet".
+#   -TimeoutSeconds  : total budget before giving up (default 300s / 5 min).
+#   -InitialDelay    : seconds to wait before the FIRST poll (default 0).
+#   -PollInterval    : starting gap between polls (default 15s).
+#   -MaxPollInterval : ceiling for the growing gap (default 30s).
+#   -Activity        : label shown in progress messages.
+function Wait-ForCondition {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Condition,
+        [int]$TimeoutSeconds = 300,
+        [int]$InitialDelay = 0,
+        [int]$PollInterval = 15,
+        [int]$MaxPollInterval = 30,
+        [string]$Activity = "operation"
+    )
+
+    if ($InitialDelay -gt 0) {
+        Start-Sleep -Seconds $InitialDelay
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $interval = $PollInterval
+    $attempt = 0
+
+    while ($true) {
+        $attempt++
+        $ready = $false
+        try {
+            $ready = [bool](& $Condition)
+        }
+        catch {
+            # Exception = not ready yet (e.g. AuthorizationFailed during propagation).
+            $ready = $false
+        }
+
+        if ($ready) {
+            return $true
+        }
+
+        $remaining = [int]([Math]::Floor(($deadline - (Get-Date)).TotalSeconds))
+        if ($remaining -le 0) {
+            return $false
+        }
+
+        # Don't sleep past the deadline.
+        $sleepFor = [Math]::Min($interval, $remaining)
+        Write-Host "  [WAIT] $Activity not ready yet (attempt $attempt). Retrying in ${sleepFor}s (up to ${remaining}s left)..." -ForegroundColor Yellow
+        Start-Sleep -Seconds $sleepFor
+
+        # Grow the interval (cap at MaxPollInterval) so we back off on slow tenants.
+        $interval = [Math]::Min($interval + 5, $MaxPollInterval)
     }
 }
 
@@ -352,7 +421,7 @@ function Get-DetectedAgreementType {
 # ============================================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.5" -ForegroundColor Cyan
+Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.6" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -850,7 +919,7 @@ catch {
 # explains exactly which role is needed if it fails.
 
 # --- Check 4: Does an app registration already exist? ---
-$appDisplayName = "CrayonCloudEconomicsReader"
+$appDisplayName = "CrayonCloudEconomicsReaderToDelete"
 $existingApp = $null
 try {
     $existingApp = Get-MgApplication -Filter "DisplayName eq '$appDisplayName'" -ErrorAction Stop
@@ -1281,7 +1350,7 @@ Write-Host "Step 8: Exporting CSV files..." -ForegroundColor Cyan
 $dateKey = Get-Date -Format "yyyyMMdd"
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Customer A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
@@ -1297,7 +1366,7 @@ if ($safeTenantName -ne $rawTenantName) {
 $baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Customer A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
@@ -1313,7 +1382,7 @@ if ($safeTenantName -ne $rawTenantName) {
 $baseName = "CrayonCloudEconomics-" + $safeTenantName + "-" + $dateKey
 
 # Sanitize tenant name for use in a filename. Tenant display names can contain
-# characters that are illegal in file paths (e.g. "Crayon A/S" -> the "/" is a path
+# characters that are illegal in file paths (e.g. "Customer A/S" -> the "/" is a path
 # separator on every OS). We replace any non [A-Za-z0-9._] character with "-"
 # and collapse any runs of "-". This also strips invalid filename chars like
 # < > : " / \ | ? * and spaces in one go.
@@ -1415,10 +1484,11 @@ Write-Host "  Then remove the $DirectoryPath folder." -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 9: Validation (connecting as Service Principal)..." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Waiting 60 seconds for role assignments to propagate..." -ForegroundColor Yellow
-Write-Host "  (Provider-scoped roles like Reservations Reader can take up to" -ForegroundColor Yellow
-Write-Host "  several minutes to propagate across Azure.)" -ForegroundColor Yellow
-Start-Sleep -Seconds 60
+Write-Host "  Waiting for role assignments to start propagating..." -ForegroundColor Yellow
+Write-Host "  (RBAC propagation is eventually consistent - each check below now" -ForegroundColor Yellow
+Write-Host "  polls and retries on its own for up to several minutes, so a slow" -ForegroundColor Yellow
+Write-Host "  tenant no longer causes a false failure.)" -ForegroundColor Yellow
+Start-Sleep -Seconds 20
 Write-Host ""
 
 $subscriptions = Get-AzSubscription
@@ -1467,24 +1537,33 @@ foreach ($tenantObject in $tenantInfo) {
     # --- Check Reader Roles ---
     Write-Host "  Checking management group roles..."
     try {
-        $roles = Get-AzRoleAssignment -ServicePrincipalName $currentAppId -Scope "/providers/Microsoft.Management/managementGroups/$RootTenantID"
-        
-        $managementGroupRoles = $roles | Where-Object {
-            $_.Scope -like '/providers/Microsoft.Management/managementGroups*' -and
-            ($_.RoleDefinitionName -eq 'Reader' -or $_.RoleDefinitionName -eq 'Cost Management Reader' -or $_.RoleDefinitionName -eq "Carbon Optimization Reader")
-        }
+        $mgScope = "/providers/Microsoft.Management/managementGroups/$RootTenantID"
+        $allExpected = @('Reader', 'Cost Management Reader', 'Carbon Optimization Reader')
+        $managementGroupRoles = @()
 
-        if ($managementGroupRoles.Count -eq 3) {
+        # Poll until all 3 management group roles are visible, or we time out.
+        # The assignment was made earlier but may not have propagated yet.
+        $mgReady = Wait-ForCondition -Activity "Management group roles" -TimeoutSeconds 300 -PollInterval 15 -Condition {
+            $roles = Get-AzRoleAssignment -ServicePrincipalName $currentAppId -Scope $mgScope -ErrorAction Stop
+            $script:mgMatched = $roles | Where-Object {
+                $_.Scope -like '/providers/Microsoft.Management/managementGroups*' -and
+                ($_.RoleDefinitionName -eq 'Reader' -or $_.RoleDefinitionName -eq 'Cost Management Reader' -or $_.RoleDefinitionName -eq "Carbon Optimization Reader")
+            }
+            return (($script:mgMatched | Select-Object -ExpandProperty RoleDefinitionName -Unique).Count -eq 3)
+        }
+        $managementGroupRoles = @($script:mgMatched)
+
+        if ($mgReady) {
             Write-Host "  [OK] All 3 management group roles assigned" -ForegroundColor Green
             $mgmt = "Management Group roles: OK (Reader, Cost Management Reader, Carbon Optimization Reader)"
         }
         else {
             $assignedNames = ($managementGroupRoles.RoleDefinitionName | Sort-Object -Unique) -join ", "
-            $allExpected = @('Reader', 'Cost Management Reader', 'Carbon Optimization Reader')
             $missingRoles = $allExpected | Where-Object { $_ -notin $managementGroupRoles.RoleDefinitionName }
             $missingString = $missingRoles -join ", "
-            Write-Host "  [WARNING] Missing management group roles: $missingString" -ForegroundColor Yellow
-            $mgmt = "Management Group roles: PARTIAL. Found: $assignedNames. Missing: $missingString"
+            Write-Host "  [WARNING] Missing management group roles after waiting: $missingString" -ForegroundColor Yellow
+            Write-Host "           These may still be propagating. Re-check in the Azure Portal in a few minutes." -ForegroundColor Yellow
+            $mgmt = "Management Group roles: PARTIAL. Found: $assignedNames. Missing: $missingString (may still be propagating)"
         }
     }
     catch {
@@ -1492,44 +1571,53 @@ foreach ($tenantObject in $tenantInfo) {
         $mgmt = "Management Group roles: FAILED. $_"
     }
 
-    # --- Check Reservations (with retry for propagation delays) ---
+    # --- Check Reservations (polls for propagation delays) ---
+    # Provider-scoped roles (Reservations Reader on /providers/Microsoft.Capacity)
+    # are the slowest to propagate - can take several minutes. We poll until the
+    # call stops returning AuthorizationFailed. Note: a successful call returning
+    # 0 reservations is a legitimate result (none purchased), NOT a failure.
     Write-Host "  Checking reservation access..."
     $res = $null
-    $reservationRetries = 2
-    for ($attempt = 1; $attempt -le $reservationRetries; $attempt++) {
+    $script:reservationCount = -1
+    $script:reservationLastError = $null
+
+    $resReady = Wait-ForCondition -Activity "Reservations Reader" -TimeoutSeconds 300 -PollInterval 20 -Condition {
         try {
             $reservationObjects = Get-AzReservation -ErrorAction Stop
-            $reservationcount = $reservationObjects.Count
-
-            if ($reservationcount -gt 0) {
-                Write-Host "  [OK] $reservationcount reservations visible" -ForegroundColor Green
-                $res = "Reservations: OK. $reservationcount visible"
-            }
-            else {
-                Write-Host "  [INFO] 0 reservations visible (none purchased or no access)" -ForegroundColor Yellow
-                $res = "Reservations: CHECK. 0 visible."
-            }
-            break
+            $script:reservationCount = @($reservationObjects).Count
+            return $true
         }
         catch {
-            $resError = "$_"
-            if ($attempt -lt $reservationRetries -and ($resError -like "*AuthorizationFailed*" -or $resError -like "*does not have authorization*")) {
-                Write-Host "  [RETRY] Reservations Reader not yet propagated, waiting 30s... (attempt $attempt/$reservationRetries)" -ForegroundColor Yellow
-                Start-Sleep -Seconds 30
+            $script:reservationLastError = "$_"
+            # Auth-not-propagated = keep waiting. Any other error = stop and report.
+            if ($script:reservationLastError -like "*AuthorizationFailed*" -or $script:reservationLastError -like "*does not have authorization*") {
+                throw  # signal "not ready" to the poller
             }
-            else {
-                if ($resError -like "*AuthorizationFailed*" -or $resError -like "*does not have authorization*") {
-                    Write-Host "  [WARNING] Reservation check failed (propagation delay likely): $resError" -ForegroundColor Yellow
-                    Write-Host "           The Reservations Reader role may need a few more minutes to propagate." -ForegroundColor Yellow
-                    Write-Host "           Re-run validation later or check manually in the Azure Portal." -ForegroundColor Yellow
-                    $res = "Reservations: PROPAGATION_DELAY. Role assigned but not yet effective. Retry in a few minutes."
-                }
-                else {
-                    Write-Host "  [WARNING] Reservation check failed: $resError" -ForegroundColor Yellow
-                    $res = "Reservations: FAILED. $resError"
-                }
-            }
+            return $true  # non-auth error: stop polling, handled below
         }
+    }
+
+    if ($resReady -and $script:reservationCount -ge 0) {
+        if ($script:reservationCount -gt 0) {
+            Write-Host "  [OK] $($script:reservationCount) reservations visible" -ForegroundColor Green
+            $res = "Reservations: OK. $($script:reservationCount) visible"
+        }
+        else {
+            Write-Host "  [INFO] 0 reservations visible (none purchased or no access)" -ForegroundColor Yellow
+            $res = "Reservations: CHECK. 0 visible."
+        }
+    }
+    elseif ($resReady -and $script:reservationLastError) {
+        # Poller stopped on a non-auth error.
+        Write-Host "  [WARNING] Reservation check failed: $($script:reservationLastError)" -ForegroundColor Yellow
+        $res = "Reservations: FAILED. $($script:reservationLastError)"
+    }
+    else {
+        # Timed out still getting AuthorizationFailed.
+        Write-Host "  [WARNING] Reservation check failed (propagation delay): $($script:reservationLastError)" -ForegroundColor Yellow
+        Write-Host "           The Reservations Reader role may need a few more minutes to propagate." -ForegroundColor Yellow
+        Write-Host "           Re-run validation later or check manually in the Azure Portal." -ForegroundColor Yellow
+        $res = "Reservations: PROPAGATION_DELAY. Role assigned but not yet effective. Retry in a few minutes."
     }
 
     # --- Check Savings Plans ---
