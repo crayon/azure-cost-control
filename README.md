@@ -17,6 +17,16 @@
 
 This PowerShell script automates the setup and validation of permissions for onboarding customers to the Crayon Azure Cost Control Service. It creates a service principal with the required read-only role assignments across Azure management, billing, reservations, and savings plans. The script supports Enterprise Agreement (EA), Microsoft Customer Agreement (MCA), and Cloud Solution Provider (CSP) environments.
 
+## Version Information
+
+- **Current version:** 1.2.6
+- **Script files:** `Assign-AzureFinOpsRole.ps1` (and an identical `.txt` copy for environments that block `.ps1` downloads)
+- **Author:** Crayon (http://www.crayon.com)
+
+The script automatically starts a transcript log at `%TEMP%/crayon-onboarding-<timestamp>.log` (or the OS temp directory) so that, even if a run exits unexpectedly, there is always a log file you can send to Crayon for diagnosis.
+
+See [Release Notes](#release-notes) for the full change history.
+
 ## Prerequisites
 
 ### PowerShell Modules
@@ -117,6 +127,7 @@ The script requests the following Microsoft Graph scopes:
    - Billing account access
    - Checks for existing `CrayonCloudEconomicsReader` app registration
    - Resource provider registration
+   - **Tenant-context check:** warns when the active Azure context points at a different tenant than the one you entered (a common cause of cross-tenant onboarding mistakes)
 
    If blocking issues are found, the script exits cleanly without creating any resources.
 
@@ -145,6 +156,8 @@ The script generates **two separate CSV files** in the `crayon` directory:
 |------|----------|-------------|
 | `CrayonCloudEconomics-<TenantName>-<Date>.csv` | Tenant ID, tenant name, domain, country code, agreement type, App ID, secret expiry date | Safe to store |
 | `CrayonCloudEconomics-<TenantName>-<Date>-SECRET.csv` | Tenant ID, App ID, client secret, secret expiry date | **Sensitive — handle with care** |
+
+> **Note:** The tenant name is sanitized for use in the file name. Characters that are illegal in file paths (for example the `/` in "Customer A/S") are replaced with `-`, so export no longer fails on tenants with such names.
 
 > **Important:** The SECRET file contains the client secret credential. Send it separately and securely. Delete it after transfer.
 
@@ -223,7 +236,7 @@ Copy the `C:\Modules` folder to the bastion host and import them. Alternatively,
 
 ### Q: The Reservations Reader check fails during validation — is that a problem?
 
-**A:** Not necessarily. Provider-scoped roles (like Reservations Reader at `/providers/Microsoft.Capacity`) can take several minutes to propagate across Azure. The script waits 60 seconds and retries, but on some tenants it may take longer. If the role assignment itself succeeded (shown in the summary table), the validation failure is just a propagation delay. Wait 5–10 minutes and verify manually in the Azure Portal.
+**A:** Not necessarily. Provider-scoped roles (like Reservations Reader at `/providers/Microsoft.Capacity`) can take several minutes to propagate across Azure. As of v1.2.6 the script polls and retries each validation check (management group roles and Reservations Reader) with backoff for up to 5 minutes, returning as soon as the role becomes effective. If propagation takes even longer and the role assignment itself succeeded (shown in the summary table), the validation failure is just a delay. Wait 5–10 minutes and verify manually in the Azure Portal.
 
 ---
 
@@ -288,6 +301,12 @@ It **cannot** create, modify, or delete any Azure resources, subscriptions, or b
 
 ---
 
+### Q: The script exited without any error message — what happened?
+
+**A:** As of v1.2.3, the script always writes a transcript log to your temp directory (`%TEMP%/crayon-onboarding-<timestamp>.log` on Windows, the equivalent temp path on macOS/Linux). The transcript path is printed near the top of the run. If the script exits unexpectedly, open that log file or send it to your Crayon representative — it captures all output, including errors that may have scrolled past. v1.2.3 also wrapped the tenant-setup steps in error handling, so most previously-silent failures now print a clear message.
+
+---
+
 ### Q: How do I send the output files to Crayon?
 
 **A:** Use the secure file transfer portal at https://deila.sensa.is. Send both CSV files to your Crayon representative. After confirmed receipt, delete the local `crayon` directory (Windows: `C:\crayon`, Linux/macOS: `~/crayon`).
@@ -310,6 +329,41 @@ It **cannot** create, modify, or delete any Azure resources, subscriptions, or b
 ---
 
 ## Release Notes
+
+### Version 1.2.6
+
+#### Polling-based validation waits
+- Replaced the fixed 60-second validation wait (which caused false failures on tenants where RBAC propagation took longer) with a `Wait-ForCondition` polling helper
+- Validation now waits a short 20s for propagation to begin, then each check (management group roles, Reservations Reader) polls and retries with backoff for up to 5 minutes, returning as soon as the role becomes effective
+- The management group role check, previously checked exactly once, now polls too
+- A successful `Get-AzReservation` returning 0 reservations is correctly treated as success rather than retried
+
+### Version 1.2.5
+
+#### Removed directory-role pre-flight check
+- Removed the directory-role pre-flight check added in 1.2.4 — the `/me/memberOf`-based check produced false negatives for PIM-activated roles, roles assigned via group membership, custom directory roles, and tenants with reduced `Directory.Read.All` scope
+- The actual `New-AzADServicePrincipal` call is the only reliable source of truth, and its error handler already explains which role is needed if it fails
+- Net effect: the script no longer blocks Global Admins (or any other valid role-holder) at pre-flight
+
+### Version 1.2.4
+
+#### Stronger app-creation permission check and error surfacing
+- Pre-flight verified the operator held a directory role allowing app creation (Global Admin / Application Admin / Cloud Application Admin / Privileged Role Admin) instead of only checking the granted Graph scope
+- Service Principal creation now surfaces the underlying insufficient-privileges Graph error verbatim instead of masking it behind a downstream "ObjectId is empty" error
+- _Note: the pre-flight role check introduced here was removed in 1.2.5 (see above)._
+
+### Version 1.2.3
+
+#### Hardened tenant setup and added transcript logging
+- Wrapped `Get-AzResourceProvider`, `Register-AzResourceProvider`, and `Get-AzTenant` in try/catch with friendly diagnostics (previously a terminating error in any of them killed the script with no message)
+- Added an automatic transcript that captures all output to `%TEMP%/crayon-onboarding-<timestamp>.log` so silent exits always leave evidence
+- Added a tenant-context mismatch check that warns when the active Azure context points at a different tenant than the one entered (a common cause of cross-tenant onboarding failures)
+
+### Version 1.2.2
+
+#### Fixed CSV export on tenants with special characters
+- Fixed CSV export failure when the tenant display name contains characters illegal in file paths (e.g. "EG A/S", where `/` was treated as a directory separator)
+- Tenant name is now sanitized for filenames; non-alphanumeric characters (except `.` and `_`) are replaced with `-`
 
 ### Version 1.2.1
 
