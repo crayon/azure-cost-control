@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.2.6
+.VERSION 1.2.7
 
 .AUTHOR Crayon. http://www.crayon.com
 
@@ -26,6 +26,7 @@ Change Log:
 1.2.4 - Pre-flight now actually verifies that the operator has a directory role allowing app creation (Global Admin / Application Admin / Cloud Application Admin / Privileged Role Admin), instead of only checking that the Az PowerShell client was granted the Application.ReadWrite.All Graph scope (which is necessary but not sufficient). Improved Service Principal creation error handling: the underlying Insufficient-privileges Graph error is now surfaced verbatim instead of being masked by the downstream "ObjectId is empty" binding error.
 1.2.5 - Removed the directory-role pre-flight check added in 1.2.4. The /me/memberOf-based check produced false negatives for several legitimate scenarios: PIM-activated roles (only some appear), roles assigned via group membership, custom directory roles, and tenants where Directory.Read.All scope was reduced. The actual New-AzADServicePrincipal call is the only reliable source of truth and the existing error handler already explains exactly which role is needed if it fails. Net effect: the script no longer blocks Global Admins (or any other valid role-holder) at pre-flight and just lets the real cmdlet decide.
 1.2.6 - Replaced the fixed 60-second validation wait (which caused false failures on tenants where RBAC propagation took longer) with a Wait-ForCondition polling helper. The validation step now waits a short 20s for propagation to begin, then each check (management group roles, Reservations Reader) polls and retries with backoff for up to 5 minutes, returning as soon as the role becomes effective. The management group role check, which was previously checked exactly once, now polls too. A successful Get-AzReservation returning 0 reservations is correctly treated as success rather than retried.
+1.2.7 - Fixed an infinite "Invalid selection" loop in the billing account picker on tenants with exactly one billing account. PowerShell unwraps a single-element array into a bare object, so $billingAccountValues.Count returned $null in Windows PowerShell 5.1; the validation check ($parsed -le $null) then rejected every input. Fetch-BillingAccounts now always returns an array (@(...)) and Select-BillingAccount normalizes its input and uses a cached count for the prompt and bounds check. Single-account tenants (the most common case) can now be onboarded.
 #>
 # Requires -Modules Az
 $ErrorActionPreference = "Stop"
@@ -327,7 +328,10 @@ function Fetch-BillingAccounts {
         throw "No billing accounts found. Please confirm that the customer has an active EA or MCA agreement and the user has the required billing permissions."
     }
 
-    return $billingAccounts.value
+    # Force array semantics. When there is exactly one billing account PowerShell
+    # would otherwise unwrap the single-element array into a bare object, which
+    # breaks .Count / indexing downstream (see Select-BillingAccount).
+    return @($billingAccounts.value)
 }
 
 # NEW in 1.1.0: Instead of blindly taking [0], present all accounts to the operator
@@ -339,8 +343,14 @@ function Select-BillingAccount {
         $billingAccountValues
     )
 
+    # Normalize to an array. A single account passed in as a bare PSCustomObject
+    # (PowerShell unwraps single-element arrays) would otherwise have no usable
+    # .Count in Windows PowerShell 5.1, making every selection fail validation.
+    $billingAccountValues = @($billingAccountValues)
+    $accountCount = $billingAccountValues.Count
+
     Write-Host ""
-    Write-Host "  Found $($billingAccountValues.Count) billing account(s):" -ForegroundColor Cyan
+    Write-Host "  Found $accountCount billing account(s):" -ForegroundColor Cyan
     Write-Host ""
 
     $index = 1
@@ -366,13 +376,13 @@ function Select-BillingAccount {
     # Loop until a valid selection is made
     $selection = $null
     while ($null -eq $selection) {
-        $userInput = Read-Host "  Select billing account to use (1-$($billingAccountValues.Count))"
+        $userInput = Read-Host "  Select billing account to use (1-$accountCount)"
         $parsed = 0
-        if ([int]::TryParse($userInput, [ref]$parsed) -and $parsed -ge 1 -and $parsed -le $billingAccountValues.Count) {
+        if ([int]::TryParse($userInput, [ref]$parsed) -and $parsed -ge 1 -and $parsed -le $accountCount) {
             $selection = $billingAccountValues[$parsed - 1]
         }
         else {
-            Write-Host "  Invalid selection. Please enter a number between 1 and $($billingAccountValues.Count)." -ForegroundColor Red
+            Write-Host "  Invalid selection. Please enter a number between 1 and $accountCount." -ForegroundColor Red
         }
     }
 
@@ -421,7 +431,7 @@ function Get-DetectedAgreementType {
 # ============================================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.6" -ForegroundColor Cyan
+Write-Host "  Crayon Azure Cost Control - Onboarding Script v1.2.7" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -919,7 +929,7 @@ catch {
 # explains exactly which role is needed if it fails.
 
 # --- Check 4: Does an app registration already exist? ---
-$appDisplayName = "CrayonCloudEconomicsReaderToDelete"
+$appDisplayName = "CrayonCloudEconomicsReader"
 $existingApp = $null
 try {
     $existingApp = Get-MgApplication -Filter "DisplayName eq '$appDisplayName'" -ErrorAction Stop
