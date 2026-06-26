@@ -19,7 +19,7 @@ This PowerShell script automates the setup and validation of permissions for onb
 
 ## Version Information
 
-- **Current version:** 1.2.6
+- **Current version:** 1.2.7
 - **Script files:** `Assign-AzureFinOpsRole.ps1` (and an identical `.txt` copy for environments that block `.ps1` downloads)
 - **Author:** Crayon (http://www.crayon.com)
 
@@ -246,6 +246,12 @@ Copy the `C:\Modules` folder to the bastion host and import them. Alternatively,
 
 ---
 
+### Q: The script shows "Select billing account to use (1-)" with a blank number and rejects everything I type — what's wrong?
+
+**A:** This was a bug in versions up to 1.2.6 that affected tenants with exactly one billing account, fixed in **v1.2.7**. The billing count failed to resolve in Windows PowerShell 5.1, so the picker rejected every entry in an endless loop. Download the latest script (1.2.7 or newer) and re-run. If you can't update immediately, running the same script in **Azure Cloud Shell** (PowerShell 7) also avoids the issue.
+
+---
+
 ### Q: How long is the service principal secret valid?
 
 **A:** By default, 36 months (3 years). The script prompts you to enter a custom duration in months. Choose a value that matches your Crayon agreement length.
@@ -329,6 +335,14 @@ It **cannot** create, modify, or delete any Azure resources, subscriptions, or b
 ---
 
 ## Release Notes
+
+### Version 1.2.7
+
+#### Fixed infinite loop in billing account selection (single-account tenants)
+- Fixed an infinite "Invalid selection" loop that prevented onboarding on tenants with **exactly one billing account** (the most common case)
+- Root cause: PowerShell unwraps a single-element array into a bare object, so `$billingAccountValues.Count` returned `$null` in Windows PowerShell 5.1. The bounds check `$parsed -le $null` evaluated as `$parsed -le 0`, rejecting every input including the only valid choice
+- `Fetch-BillingAccounts` now always returns an array (`@(...)`), and `Select-BillingAccount` normalizes its input and uses a cached count for the "Found N" message, the `(1-N)` prompt, and the validation check
+- Symptom this fixes: `Found  billing account(s)` and `Select billing account to use (1-):` with a blank count, where no entry was ever accepted
 
 ### Version 1.2.6
 
